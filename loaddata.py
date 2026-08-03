@@ -78,6 +78,23 @@ scaler = MinMaxScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
+
+# 1. Grab raw cardekho.csv to ensure we get the original text names and prices
+raw_cars = pd.read_csv("cardekho.csv")
+
+# 2. Extract the exact rows used in X_test using their index
+test_df = raw_cars.loc[X_test.index].copy()
+
+# 3. Add the calculated Price_Tier column so you can see the true class too
+test_df['Price_Tier'] = y_test
+
+# 4. Save to a clean CSV file
+test_df.to_csv("test_dataset.csv", index=False)
+
+print("\n-----------------------------------")
+print("Saved Test Dataset to 'test_dataset.csv'!")
+print("===================================")
+
 # ==========================================
 # 7. VERIFY PREPROCESSING SUCCESS
 # ==========================================
@@ -98,9 +115,3 @@ print(f"Any missing values in X_train: {np.isnan(X_train_scaled).any()}")
 print(f"Any missing values in X_test : {np.isnan(X_test_scaled).any()}")
 print("-----------------------------------")
 
-# test dataset export
-test_data_export = X_test.copy()
-test_data_export['Price_Tier'] = y_test
-test_data_export.to_csv("test_dataset_20percent.csv", index=False)
-
-print("Saved 20% test dataset to 'test_dataset_20percent.csv'!")
