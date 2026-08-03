@@ -97,3 +97,10 @@ print("\n--- FINAL MODEL READINESS CHECK ---")
 print(f"Any missing values in X_train: {np.isnan(X_train_scaled).any()}")
 print(f"Any missing values in X_test : {np.isnan(X_test_scaled).any()}")
 print("-----------------------------------")
+
+# test dataset export
+test_data_export = X_test.copy()
+test_data_export['Price_Tier'] = y_test
+test_data_export.to_csv("test_dataset_20percent.csv", index=False)
+
+print("Saved 20% test dataset to 'test_dataset_20percent.csv'!")
