@@ -1,82 +1,45 @@
 import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
+from sklearn.metrics import classification_report
 import streamlit as st
 
-# Import plotting functions from plot_graph.py
-from plot_graph import plot_confusion_matrix, plot_side_by_side_confusion_matrix
+# 1. IMPORT DATASET & GRAPH UTILITIES
+from loaddata import X_test_scaled, y_test
+from plot_graph import plot_side_by_side_confusion_matrix
 
-# Page Configuration
+# 2. PAGE CONFIGURATION
 st.set_page_config(
     page_title="Car Price & Market Tier Prediction System",
     page_icon="🚗",
     layout="wide",
 )
 
-
 # -----------------------------------------------------------------------------
-# 1. LOAD TRAINED MODEL ARTIFACTS & TEST DATA
+# 1. LOAD TRAINED MODEL ARTIFACTS
 # -----------------------------------------------------------------------------
 @st.cache_resource
-def load_all_artifacts():
-  # Model 1: KNN + Linear Regression
-  knn_model, knn_lr_model = None, None
-  try:
-    knn_model = joblib.load("knn_model.pkl")
-    knn_lr_model = joblib.load("knn_lr_model.pkl")
-  except Exception:
-    pass
-
-  # Model 2: SVM + XGBoost
-  svm_model, svm_xgb_model = None, None
-  try:
-    svm_model = joblib.load("svm_model.pkl")
-    svm_xgb_model = joblib.load("svm_xgb_model.pkl")
-  except Exception:
-    pass
-
-  # Model 3: ANN + Random Forest
-  ann_model, ann_rf_model = None, None
-  try:
-    ann_model = joblib.load("ann_model.pkl")
-    ann_rf_model = joblib.load("ann_rf_model.pkl")
-  except Exception:
-    pass
-
-  # Preprocessors
-  scaler, label_encoder = None, None
-  try:
-    scaler = joblib.load("scaler.pkl")
-    label_encoder = joblib.load("label_encoder.pkl")
-  except Exception:
-    pass
-
-  return {
-      "KNN + Linear Regression": (knn_model, knn_lr_model),
-      "SVM + XGBoost": (svm_model, svm_xgb_model),
-      "ANN + Random Forest": (ann_model, ann_rf_model),
-      "scaler": scaler,
-      "label_encoder": label_encoder,
-  }
+def load_models():
+  scaler_obj = joblib.load("scaler.pkl")
+  svm = joblib.load("svm_model.pkl")
+  svm_xgb_data = joblib.load("svm_xgb_model.pkl")
+  return svm, svm_xgb_data, scaler_obj
 
 
-artifacts = load_all_artifacts()
-scaler = artifacts["scaler"]
-label_encoder = artifacts["label_encoder"]
-
-
-# Load test dataset for evaluation
-@st.cache_data
-def load_test_evaluation_data():
-  try:
-    from loaddata import X_test_scaled, y_test
-
-    return X_test_scaled, y_test
-  except Exception:
-    return None, None
-
-
-X_test_scaled, y_test = load_test_evaluation_data()
+try:
+  svm_model, svm_xgb_dict, scaler = load_models()
+  svm_ensemble = svm_xgb_dict["svm"]
+  xgb_ensemble = svm_xgb_dict["xgb"]
+  le = svm_xgb_dict["le"]
+except Exception as e:
+  st.error(
+      "⚠️ Model artifacts (`scaler.pkl`, `svm_model.pkl`, `svm_xgb_model.pkl`)"
+      " not found!\nPlease run your training scripts to generate the `.pkl`"
+      " files."
+  )
+  st.stop()
 
 # -----------------------------------------------------------------------------
 # 2. PRICING CONSTANTS
@@ -92,33 +55,21 @@ CONDITION_MULTIPLIERS = {
 }
 
 # -----------------------------------------------------------------------------
-# 3. UI LAYOUT & TABS
+# 3. HEADER & SIDEBAR ARCHITECTURE SELECTOR
 # -----------------------------------------------------------------------------
 st.title("🚗 Car Price Tier Prediction & Valuation System")
 st.markdown(
     "Automated market tier classification and comparative evaluation across"
-    " Hybrid Machine Learning Architectures."
+    " Standalone and Hybrid Machine Learning Architectures."
 )
 st.markdown("---")
 
-if scaler is None or label_encoder is None:
-  st.error(
-      "⚠️ Core artifacts (`scaler.pkl`, `label_encoder.pkl`) not found!\n\n"
-      "Please run your training script to save the `.pkl` files using `joblib`"
-      " first."
-  )
-  st.stop()
-
-# Sidebar: Exactly 3 AI Model Selections
 st.sidebar.header("⚙️ AI Architecture")
 selected_architecture = st.sidebar.selectbox(
     "AI MODEL :",
-    ["SVM + XGBoost", "KNN + Linear Regression", "ANN + Random Forest"],
+    ["Hybrid Ensemble (SVM + XGBoost)", "Support Vector Machine (SVM OvO)"],
 )
 
-base_model, hybrid_model = artifacts[selected_architecture]
-
-# Tab Navigation
 tab1, tab2 = st.tabs(
     ["🚀 Interactive Prediction", "📈 Model Evaluation & Comparison Heatmap"]
 )
@@ -127,7 +78,7 @@ tab1, tab2 = st.tabs(
 # TAB 1: INTERACTIVE PREDICTION
 # =============================================================================
 with tab1:
-  col1, col2 = st.columns([1.2, 1])
+  col1, col2 = st.columns([1.2, 1], gap="large")
 
   with col1:
     st.subheader("1. Enter Car Details")
@@ -200,80 +151,65 @@ with tab1:
     st.subheader("📊 Prediction Results")
     st.markdown(f"**Active AI Model:** `{selected_architecture}`")
 
-    active_predictor = hybrid_model if hybrid_model is not None else base_model
-
     if predict_btn:
-      if active_predictor is None:
-        st.warning(
-            f"⚠️ Artifacts for `{selected_architecture}` are not loaded. Please"
-            " train and save the `.pkl` files."
-        )
+      fuel_Diesel = 1 if fuel_type == "Diesel" else 0
+      fuel_Petrol = 1 if fuel_type == "Petrol" else 0
+      fuel_LPG = 1 if fuel_type == "LPG" else 0
+      transmission_Manual = 1 if transmission == "Manual" else 0
+      seller_Individual = 1 if seller_type == "Individual" else 0
+      seller_Trustmark = 1 if seller_type == "Trustmark Dealer" else 0
+      brand_encoded = 2.0
+
+      input_features = np.array([[
+          year,
+          km_driven,
+          mileage,
+          engine,
+          max_power,
+          seats,
+          fuel_Diesel,
+          fuel_LPG,
+          fuel_Petrol,
+          transmission_Manual,
+          seller_Individual,
+          seller_Trustmark,
+          brand_encoded,
+      ]])
+
+      input_scaled = scaler.transform(input_features)
+
+      if selected_architecture == "Support Vector Machine (SVM OvO)":
+        probabilities = svm_model.predict_proba(input_scaled)[0]
+        class_labels = list(svm_model.classes_)
+        predicted_tier = class_labels[np.argmax(probabilities)]
       else:
-        fuel_Diesel = 1 if fuel_type == "Diesel" else 0
-        fuel_Petrol = 1 if fuel_type == "Petrol" else 0
-        fuel_LPG = 1 if fuel_type == "LPG" else 0
-        transmission_Manual = 1 if transmission == "Manual" else 0
-        seller_Individual = 1 if seller_type == "Individual" else 0
-        seller_Trustmark = 1 if seller_type == "Trustmark Dealer" else 0
-        brand_encoded = 2.0
+        p_svm = svm_ensemble.predict_proba(input_scaled)[0]
+        p_xgb = xgb_ensemble.predict_proba(input_scaled)[0]
+        probabilities = (p_svm + p_xgb) / 2.0
+        class_labels = list(le.classes_)
+        predicted_tier = class_labels[np.argmax(probabilities)]
 
-        input_features = np.array([[
-            year,
-            km_driven,
-            mileage,
-            engine,
-            max_power,
-            seats,
-            fuel_Diesel,
-            fuel_LPG,
-            fuel_Petrol,
-            transmission_Manual,
-            seller_Individual,
-            seller_Trustmark,
-            brand_encoded,
-        ]])
+      stars, multiplier = CONDITION_MULTIPLIERS[condition_choice]
+      base_price = TIER_BASE_PRICES.get(predicted_tier, 550000.0)
+      final_price = base_price * multiplier
 
-        input_scaled = scaler.transform(input_features)
+      st.success(f"### Predicted Tier: **{predicted_tier} Class**")
 
-        try:
-          raw_prediction = active_predictor.predict(input_scaled)[0]
-          if isinstance(raw_prediction, (int, np.integer)):
-            predicted_tier = label_encoder.inverse_transform([raw_prediction])[
-                0
-            ]
-          else:
-            predicted_tier = raw_prediction
-        except Exception as e:
-          st.error(f"Prediction Error: {e}")
-          st.stop()
+      m_col1, m_col2 = st.columns(2)
+      with m_col1:
+        st.metric("Base Tier Valuation", f"${base_price:,.2f}")
+      with m_col2:
+        st.metric("Condition Multiplier", f"{multiplier:.2f}x ({stars}★)")
 
-        try:
-          probabilities = active_predictor.predict_proba(input_scaled)[0]
-          has_proba = True
-        except AttributeError:
-          has_proba = False
+      st.metric("Final Recommended Market Price", f"${final_price:,.2f}")
 
-        stars, multiplier = CONDITION_MULTIPLIERS[condition_choice]
-        base_price = TIER_BASE_PRICES.get(predicted_tier, 550000.0)
-        final_price = base_price * multiplier
-
-        st.success(f"### Predicted Tier: **{predicted_tier} Class**")
-
-        m_col1, m_col2 = st.columns(2)
-        with m_col1:
-          st.metric("Base Tier Valuation", f"${base_price:,.2f}")
-        with m_col2:
-          st.metric("Condition Multiplier", f"{multiplier:.2f}x ({stars}★)")
-
-        st.metric("Final Recommended Market Price", f"${final_price:,.2f}")
-
-        if has_proba:
-          st.markdown("#### Model Confidence Distribution")
-          prob_df = pd.DataFrame({
-              "Market Tier": label_encoder.classes_,
-              "Confidence (%)": [p * 100 for p in probabilities],
-          }).set_index("Market Tier")
-          st.bar_chart(prob_df)
+      # Confidence Distribution Bar Chart
+      st.markdown("#### Model Confidence Distribution")
+      prob_df = pd.DataFrame({
+          "Market Tier": class_labels,
+          "Confidence (%)": [p * 100 for p in probabilities],
+      }).set_index("Market Tier")
+      st.bar_chart(prob_df)
     else:
       st.info(
           "Fill in the vehicle specifications on the left and click **Predict"
@@ -284,104 +220,110 @@ with tab1:
 # TAB 2: MODEL EVALUATION & HEATMAP COMPARISON
 # =============================================================================
 with tab2:
-  st.subheader(f"📊 Heatmap Analysis: {selected_architecture}")
+  st.subheader("📊 Model Evaluation & Comparison Heatmap")
   st.markdown(
-      "Compare baseline performance against hybrid model enhancement on test"
-      " data."
+      "Compare baseline SVM performance against the Hybrid SVM + XGBoost"
+      " enhancement on test data."
   )
 
   if X_test_scaled is None or y_test is None:
     st.warning("⚠️ Test dataset not detected from `loaddata.py`.")
   else:
-    if base_model is None and hybrid_model is None:
-      st.warning(
-          "⚠️ Neither baseline nor hybrid model is loaded for"
-          f" `{selected_architecture}`. Please save their `.pkl` files."
-      )
+    class_names = list(le.classes_)
 
-    elif base_model is not None and hybrid_model is not None:
-          st.markdown("#### 🔄 Side-by-Side Performance Comparison")
-
-          # 1. Predictions from Hybrid Ensemble
-          raw_hybrid = hybrid_model.predict(X_test_scaled)
-          if isinstance(raw_hybrid[0], (int, np.integer)):
-            pred_hybrid = label_encoder.inverse_transform(raw_hybrid)
-          else:
-            pred_hybrid = raw_hybrid
-
-          # 2. Predictions from Standalone Base Model (Self-Healing Check)
-          try:
-            raw_base = base_model.predict(X_test_scaled)
-          except Exception:
-            # If base model wasn't fitted prior to saving, fit it directly on training data
-            from loaddata import X_train_scaled, y_train
-
-            # Encode y_train if necessary
-            y_tr = (
-                label_encoder.transform(y_train)
-                if isinstance(y_train.iloc[0], str)
-                else y_train
-            )
-            base_model.fit(X_train_scaled, y_tr)
-            raw_base = base_model.predict(X_test_scaled)
-
-          if isinstance(raw_base[0], (int, np.integer)):
-            pred_base = label_encoder.inverse_transform(raw_base)
-          else:
-            pred_base = raw_base
-
-          base_name_label = selected_architecture.split(" + ")[0]
-          hybrid_name_label = selected_architecture
-
-          fig = plot_side_by_side_confusion_matrix(
-              y_true=y_test,
-              y_pred_base=pred_base,
-              y_pred_hybrid=pred_hybrid,
-              class_names=label_encoder.classes_,
-              base_name=f"Standalone {base_name_label}",
-              hybrid_name=f"Hybrid ({hybrid_name_label})",
-          )
-          st.pyplot(fig)
-
-          # Calculate and display accuracy gain metrics
-          acc_base = (pred_base == y_test).mean() * 100
-          acc_hybrid = (pred_hybrid == y_test).mean() * 100
-          gain = acc_hybrid - acc_base
-
-          m1, m2, m3 = st.columns(3)
-          with m1:
-            st.metric(
-                f"Standalone {base_name_label} Accuracy", f"{acc_base:.2f}%"
-            )
-          with m2:
-            st.metric(
-                f"Hybrid ({hybrid_name_label}) Accuracy", f"{acc_hybrid:.2f}%"
-            )
-          with m3:
-            st.metric(
-                "Ensemble Performance Gain",
-                f"+{gain:.2f}%" if gain >= 0 else f"{gain:.2f}%",
-            )
-
+    # Predictions
+    y_pred_svm = svm_model.predict(X_test_scaled)
+    if isinstance(y_pred_svm[0], (int, np.integer)):
+      pred_base = le.inverse_transform(y_pred_svm)
     else:
-      single_model = base_model if base_model is not None else hybrid_model
-      single_name = (
-          "Standalone Model"
-          if base_model is not None
-          else selected_architecture
+      pred_base = y_pred_svm
+
+    p_svm_test = svm_ensemble.predict_proba(X_test_scaled)
+    p_xgb_test = xgb_ensemble.predict_proba(X_test_scaled)
+    comb_test = (p_svm_test + p_xgb_test) / 2.0
+    pred_hybrid = le.inverse_transform(np.argmax(comb_test, axis=1))
+
+    # --- Accuracy & Performance Gain Metrics ---
+    acc_base = (pred_base == y_test).mean() * 100
+    acc_hybrid = (pred_hybrid == y_test).mean() * 100
+    gain = acc_hybrid - acc_base
+
+    m1, m2, m3 = st.columns(3)
+    with m1:
+      st.metric("Standalone SVM Accuracy", f"{acc_base:.2f}%")
+    with m2:
+      st.metric("Hybrid (SVM + XGBoost) Accuracy", f"{acc_hybrid:.2f}%")
+    with m3:
+      st.metric(
+          "Ensemble Performance Gain",
+          f"+{gain:.2f}%" if gain >= 0 else f"{gain:.2f}%",
       )
 
-      raw_preds = single_model.predict(X_test_scaled)
-      pred_labels = (
-          label_encoder.inverse_transform(raw_preds)
-          if isinstance(raw_preds[0], (int, np.integer))
-          else raw_preds
-      )
+    st.write("---")
 
-      fig = plot_confusion_matrix(
-          y_true=y_test,
-          y_pred=pred_labels,
-          class_names=label_encoder.classes_,
-          title=f"{single_name} Confusion Matrix",
-      )
-      st.pyplot(fig)
+    # --- Accuracy Breakdown & Increment Heatmap ---
+    st.markdown("#### 📈 Tier-by-Tier Accuracy & Increment Heatmap")
+    report_svm = classification_report(
+        y_test, pred_base, output_dict=True, zero_division=0
+    )
+    report_hybrid = classification_report(
+        y_test, pred_hybrid, output_dict=True, zero_division=0
+    )
+
+    svm_per_class = [
+        report_svm.get(c, {}).get("precision", 0) * 100 for c in class_names
+    ]
+    hybrid_per_class = [
+        report_hybrid.get(c, {}).get("precision", 0) * 100 for c in class_names
+    ]
+
+    rows = class_names + ["Overall Accuracy"]
+    svm_vals = svm_per_class + [acc_base]
+    hybrid_vals = hybrid_per_class + [acc_hybrid]
+    increments = [h - s for h, s in zip(hybrid_vals, svm_vals)]
+
+    df_acc = pd.DataFrame(
+        {
+            "Standalone SVM (%)": svm_vals,
+            "Hybrid (SVM + XGB) (%)": hybrid_vals,
+            "Increment (+Δ %)": increments,
+        },
+        index=rows,
+    )
+
+    annot_text = np.array(
+        [
+            [f"{s:.2f}%", f"{h:.2f}%", f"{'+' if d >= 0 else ''}{d:.2f}%"]
+            for s, h, d in zip(svm_vals, hybrid_vals, increments)
+        ]
+    )
+
+    fig_inc, ax_inc = plt.subplots(figsize=(8, 3.2))
+    sns.heatmap(
+        df_acc,
+        annot=annot_text,
+        fmt="",
+        cmap="Blues",
+        linewidths=1,
+        linecolor="white",
+        cbar=True,
+        ax=ax_inc,
+    )
+    ax_inc.set_title(
+        "Accuracy Comparison & Increment Gain Across Classes", pad=10
+    )
+    st.pyplot(fig_inc)
+
+    st.write("---")
+
+    # --- Side-by-Side Confusion Matrix ---
+    st.markdown("#### 🔄 Side-by-Side Confusion Matrix")
+    fig_cm = plot_side_by_side_confusion_matrix(
+        y_true=y_test,
+        y_pred_base=pred_base,
+        y_pred_hybrid=pred_hybrid,
+        class_names=class_names,
+        base_name="Standalone SVM",
+        hybrid_name="Hybrid (SVM + XGBoost)",
+    )
+    st.pyplot(fig_cm)

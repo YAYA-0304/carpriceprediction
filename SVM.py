@@ -2,12 +2,13 @@ import numpy as np
 import pandas as pd
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import joblib
 
 # 1. IMPORT PREPROCESSED DATA & SCALER
 from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, cars
 
-# 2. TRAIN THE SVM CLASSIFIER
-svm_model = SVC(kernel='rbf', C=1.0, random_state=42)
+# 2. TRAIN THE SVM CLASSIFIER (ovo)
+svm_model = SVC(kernel='rbf', C=1.0, probability=True, decision_function_shape='ovo', random_state=42)
 
 print("Training Support Vector Machine (SVM) Classifier...")
 svm_model.fit(X_train_scaled, y_train)
@@ -30,16 +31,15 @@ print(f"Recall    : {recall * 100:.2f}%")
 print(f"F1-Score  : {f1 * 100:.2f}%")
 print("==========================================================\n")
 
+joblib.dump(svm_model, "svm_model.pkl")
+joblib.dump(scaler, "scaler.pkl")
+print("Saved trained SVM model to 'svm_model.pkl' and scaler to 'scaler.pkl'.\n")
+
 # =========================================================================
 # 4. INTERACTIVE PRICE PREDICTION FOR USER INPUT
 # =========================================================================
 
-# Baseline prices assigned to each tier (Adjust these figures if needed)
-TIER_BASE_PRICES = {
-    "Low": 250000,
-    "Medium": 550000,
-    "High": 1000000
-}
+
 
 # Multipliers based on vehicle physical condition (1 to 5 Stars)
 CONDITION_MULTIPLIERS = {
@@ -117,19 +117,57 @@ def predict_user_car():
         
         # --- SCALE FEATURES & PREDICT ---
         input_scaled = scaler.transform(input_features)
-        predicted_tier = svm_model.predict(input_scaled)[0]
+        # Get class probabilities
+        probabilities = svm_model.predict_proba(input_scaled)[0]
+        class_labels = svm_model.classes_
+
+        predicted_tier = class_labels[np.argmax(probabilities)]
         
-        base_price = TIER_BASE_PRICES.get(predicted_tier, 500000)
+# --- DYNAMIC BASELINE LOOKUP FROM DATASET ---
+        # 1. Identify the target price and year column names dynamically
+        price_col = ("selling_price" if "selling_price" in cars.columns else "Price")
+        year_col = (
+            "year"
+            if "year" in cars.columns
+            else ("Year" if "Year" in cars.columns else None)
+        )
+
+        # 2. Filter dataset for cars within the predicted tier and similar year (±2 years)
+        if year_col and year_col in cars.columns:
+            similar_cars = cars[
+                (cars["Price_Tier"] == predicted_tier)
+                & (cars[year_col].between(year - 2, year + 2))
+            ]
+        else:
+            similar_cars = pd.DataFrame()
+
+        # 3. Use median of similar cars; fallback to overall tier median if subset is small
+        if len(similar_cars) >= 3:
+            base_price = float(similar_cars[price_col].median())
+        else:
+            base_price = float(
+                cars[cars["Price_Tier"] == predicted_tier][price_col].median()
+            )
+
+        # 4. Apply condition multiplier
         multiplier = CONDITION_MULTIPLIERS.get(condition_stars, 1.0)
         final_recommended_price = base_price * multiplier
         
-        # --- DISPLAY PREDICTION SUMMARY ---
+        # --- DISPLAY PREDICTION RESULTS WITH CONFIDENCE BREAKDOWN ---
         print("\n----------------------------------------------------------")
         print("                 PREDICTION RESULTS                       ")
         print("----------------------------------------------------------")
         print(f"Predicted Market Tier : {predicted_tier}")
-        print(f"Base Market Value     : ${base_price:,.2f}")
-        print(f"Condition Rating      : {condition_stars} Star(s) (Multiplier: {multiplier:.2f}x)")
+        print("Prediction Confidence Breakdown:")
+
+        # Sort classes for clean display (High, Low, Medium)
+        for label, prob in zip(class_labels, probabilities):
+            print(f"  - {label:<6} Tier : {prob * 100:.2f}%")
+
+        print(
+            f"Condition Rating      : {condition_stars} Star(s) (Multiplier: {multiplier:.2f}x)"
+        )
+        print(f"Dynamic Base Value    : ${base_price:,.2f}")
         print(f"FINAL RECOMMENDED PRICE: ${final_recommended_price:,.2f}")
         print("==========================================================\n")
 
