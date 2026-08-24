@@ -15,7 +15,6 @@ y_train_encoded = label_encoder.fit_transform(y_train)
 y_test_encoded = label_encoder.transform(y_test)
 
 # 3. DEFINE BASE MODELS
-
 # Artificial Neural Network using Multi-Layer Perceptron
 ann_base = MLPClassifier(
     hidden_layer_sizes=(64, 32),
