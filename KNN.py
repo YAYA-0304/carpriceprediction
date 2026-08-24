@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import joblib
 
 # 1. IMPORT PREPROCESSED DATA & SCALER
 from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, brand_means
@@ -12,6 +13,9 @@ knn_model = KNeighborsClassifier(n_neighbors=5, weights='distance')
 print("Training K-Nearest Neighbors (KNN) Classifier...")
 knn_model.fit(X_train_scaled, y_train)
 print("Training Complete!\n")
+
+joblib.dump(knn_model, "knn_model.pkl")
+print("Saved trained KNN model to 'knn_model.pkl'.\n")
 
 # 3. EVALUATE PERFORMANCE METRICS
 def evaluate(model, X, y_true):

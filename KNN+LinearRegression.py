@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import joblib
 
 # =========================================================================
 # 1. IMPORT PREPROCESSED DATA & SCALER
@@ -23,6 +24,9 @@ print("Training Complete!\n")
 print("Training Logistic Regression...")
 logreg_model.fit(X_train_scaled, y_train)
 print("Training Complete!\n")
+
+joblib.dump({"knn": knn_model, "lr": logreg_model}, "knn_linear_model.pkl")
+print("Saved trained models to 'knn_linear_model.pkl'.\n")
 
 # =========================================================================
 # 3. EVALUATE PERFORMANCE METRICS

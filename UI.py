@@ -1,42 +1,56 @@
+import streamlit as st
 import joblib
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import classification_report
-import streamlit as st
 
-# 1. IMPORT DATASET & GRAPH UTILITIES (Added 'cars' import)
-from loaddata import X_test_scaled, y_test, cars
+# 1. IMPORT DATASET & GRAPH UTILITIES
+from loaddata import X_test_scaled, y_test, cars, brand_means
 from plot_graph import plot_side_by_side_confusion_matrix
 
 # 2. PAGE CONFIGURATION
 st.set_page_config(
     page_title="Car Price & Market Tier Prediction System",
     page_icon="🚗",
-    layout="wide",
+    layout="wide"
 )
 
 # -----------------------------------------------------------------------------
-# 1. LOAD TRAINED MODEL ARTIFACTS
+# 1. LOAD ALL TRAINED MODEL ARTIFACTS
 # -----------------------------------------------------------------------------
 @st.cache_resource
-def load_models():
+def load_all_models():
     scaler_obj = joblib.load("scaler.pkl")
-    svm = joblib.load("svm_model.pkl")
+    
+    # Standalone models
+    svm_standalone = joblib.load("svm_model.pkl")
+    knn_standalone = joblib.load("knn_model.pkl")
+    ann_standalone = joblib.load("ann_model.pkl")
+    
+    # Hybrid models
     svm_xgb_data = joblib.load("svm_xgb_model.pkl")
-    return svm, svm_xgb_data, scaler_obj
-
+    ann_rf_data = joblib.load("ann_rf_model.pkl")
+    knn_lr_data = joblib.load("knn_linear_model.pkl")
+    
+    return {
+        "scaler": scaler_obj,
+        "svm_standalone": svm_standalone,
+        "knn_standalone": knn_standalone,
+        "ann_standalone": ann_standalone,
+        "svm_xgb_data": svm_xgb_data,
+        "ann_rf_data": ann_rf_data,
+        "knn_lr_data": knn_lr_data
+    }
 
 try:
-    svm_model, svm_xgb_dict, scaler = load_models()
-    svm_ensemble = svm_xgb_dict["svm"]
-    xgb_ensemble = svm_xgb_dict["xgb"]
-    le = svm_xgb_dict["le"]
+    models = load_all_models()
+    scaler = models["scaler"]
 except Exception as e:
     st.error(
-        "⚠️ Model artifacts (`scaler.pkl`, `svm_model.pkl`, `svm_xgb_model.pkl`)"
-        " not found!\nPlease run your training scripts to generate the `.pkl` files."
+        f"⚠️ Model artifacts missing: {e}\n"
+        "Please run all standalone and hybrid scripts to generate all .pkl files."
     )
     st.stop()
 
@@ -48,28 +62,27 @@ CONDITION_MULTIPLIERS = {
     "2 Stars (Below Average / -10%)": (2, 0.90),
     "3 Stars (Good / Fair / Standard Market)": (3, 1.00),
     "4 Stars (Very Good / +10%)": (4, 1.10),
-    "5 Stars (Excellent / Like New / +20%)": (5, 1.20),
+    "5 Stars (Excellent / Like New / +20%)": (5, 1.20)
 }
 
 # -----------------------------------------------------------------------------
-# 3. HEADER & SIDEBAR ARCHITECTURE SELECTOR
+# 3. HEADER & SIDEBAR (HYBRID SELECTION ONLY)
 # -----------------------------------------------------------------------------
 st.title("🚗 Car Price Tier Prediction & Valuation System")
-st.markdown(
-    "Automated market tier classification and comparative evaluation across"
-    " Standalone and Hybrid Machine Learning Architectures."
-)
+st.markdown("Automated market tier classification and comparative evaluation across Machine Learning Architectures.")
 st.markdown("---")
 
-st.sidebar.header("⚙️ AI Architecture")
+st.sidebar.header("⚙️ Active Hybrid Model")
 selected_architecture = st.sidebar.selectbox(
-    "AI MODEL :",
-    ["Hybrid Ensemble (SVM + XGBoost)", "Support Vector Machine (SVM OvO)"],
+    "Choose Hybrid Model for Prediction:",
+    [
+        "Hybrid Ensemble (SVM + XGBoost)",
+        "Hybrid Ensemble (KNN + Logistic Regression)",
+        "Hybrid Ensemble (ANN + Random Forest)"
+    ]
 )
 
-tab1, tab2 = st.tabs(
-    ["🚀 Interactive Prediction", "📈 Model Evaluation & Comparison Heatmap"]
-)
+tab1, tab2 = st.tabs(["🚀 Interactive Prediction", "📈 Model Evaluation & Comparison Heatmap"])
 
 # =============================================================================
 # TAB 1: INTERACTIVE PREDICTION
@@ -79,80 +92,45 @@ with tab1:
 
     with col1:
         st.subheader("1. Enter Car Details")
-
+        
         c1, c2 = st.columns(2)
         with c1:
-            year = st.number_input(
-                "Manufacture Year",
-                min_value=1990,
-                max_value=2026,
-                value=2018,
-                step=1,
-            )
-            km_driven = st.number_input(
-                "Kilometers Driven (km)",
-                min_value=0,
-                max_value=500000,
-                value=45000,
-                step=1000,
-            )
-            mileage = st.number_input(
-                "Mileage (km/l)", min_value=5.0, max_value=40.0, value=21.5, step=0.1
-            )
-
+            year = st.number_input("Manufacture Year", min_value=1990, max_value=2026, value=2018, step=1)
+            km_driven = st.number_input("Kilometers Driven (km)", min_value=0, max_value=500000, value=45000, step=1000)
+            mileage = st.number_input("Mileage (km/l)", min_value=5.0, max_value=40.0, value=21.5, step=0.1)
+        
         with c2:
-            engine = st.number_input(
-                "Engine Capacity (CC)",
-                min_value=600,
-                max_value=6000,
-                value=1248,
-                step=50,
-            )
-            max_power = st.number_input(
-                "Max Power (bhp)",
-                min_value=30.0,
-                max_value=600.0,
-                value=85.0,
-                step=1.0,
-            )
+            engine = st.number_input("Engine Capacity (CC)", min_value=600, max_value=6000, value=1248, step=50)
+            max_power = st.number_input("Max Power (bhp)", min_value=30.0, max_value=600.0, value=85.0, step=1.0)
             seats = st.selectbox("Number of Seats", [2, 4, 5, 6, 7, 8], index=2)
 
         st.markdown("---")
         st.subheader("2. Market & Ownership Attributes")
-
-        # Extract available brand list dynamically
-        available_brands = sorted(cars["brand"].unique().tolist())
-
+        
+        available_brands = sorted(brand_means.index.tolist())
+        
         c3, c4 = st.columns(2)
         with c3:
             brand_input = st.selectbox("Car Brand", available_brands)
-            fuel_type = st.selectbox(
-                "Fuel Type", ["Diesel", "Petrol", "LPG", "CNG / Other"]
-            )
+            fuel_type = st.selectbox("Fuel Type", ["Diesel", "Petrol", "LPG", "CNG / Other"])
         with c4:
             transmission = st.selectbox("Transmission", ["Manual", "Automatic"])
-            seller_type = st.selectbox(
-                "Seller Type", ["Individual", "Dealer", "Trustmark Dealer"]
-            )
+            seller_type = st.selectbox("Seller Type", ["Individual", "Dealer", "Trustmark Dealer"])
 
         condition_choice = st.select_slider(
             "Vehicle Physical Condition Rating",
             options=list(CONDITION_MULTIPLIERS.keys()),
-            value="3 Stars (Good / Fair / Standard Market)",
+            value="3 Stars (Good / Fair / Standard Market)"
         )
 
-        predict_btn = st.button(
-            "🚀 Predict Market Tier & Value",
-            type="primary",
-            use_container_width=True,
-        )
+        predict_btn = st.button("🚀 Predict Market Tier & Value", type="primary", use_container_width=True)
 
     with col2:
         st.subheader("📊 Prediction Results")
-        st.markdown(f"**Active AI Model:** `{selected_architecture}`")
-
+        st.markdown(f"**Active Hybrid Model:** `{selected_architecture}`")
+        
         if predict_btn:
-            # Categorical encoding
+            # One-Hot Binary Flags
             fuel_Diesel = 1 if fuel_type == "Diesel" else 0
             fuel_Petrol = 1 if fuel_type == "Petrol" else 0
             fuel_LPG = 1 if fuel_type == "LPG" else 0
@@ -160,40 +138,49 @@ with tab1:
             seller_Individual = 1 if seller_type == "Individual" else 0
             seller_Trustmark = 1 if seller_type == "Trustmark Dealer" else 0
 
-            # Dynamic Brand Weight Calculation
-            brand_means = cars.groupby("brand")["Brand_Encoded"].first()
-            if brand_input in brand_means.index:
-                brand_encoded = float(brand_means[brand_input])
-            else:
-                brand_encoded = float(cars["Brand_Encoded"].median())
+            # Encode brand
+            brand_encoded = float(brand_means.get(brand_input, brand_means.mean()))
 
             input_features = np.array([[
-                year,
-                km_driven,
-                mileage,
-                engine,
-                max_power,
-                seats,
-                fuel_Diesel,
-                fuel_LPG,
-                fuel_Petrol,
-                transmission_Manual,
-                seller_Individual,
-                seller_Trustmark,
-                brand_encoded,
+                year, km_driven, mileage, engine, max_power, seats,
+                fuel_Diesel, fuel_LPG, fuel_Petrol,
+                transmission_Manual, seller_Individual, seller_Trustmark,
+                brand_encoded
             ]])
 
             input_scaled = scaler.transform(input_features)
 
-            if selected_architecture == "Support Vector Machine (SVM OvO)":
-                probabilities = svm_model.predict_proba(input_scaled)[0]
-                class_labels = list(svm_model.classes_)
-                predicted_tier = class_labels[np.argmax(probabilities)]
-            else:
-                p_svm = svm_ensemble.predict_proba(input_scaled)[0]
-                p_xgb = xgb_ensemble.predict_proba(input_scaled)[0]
+            # Prediction based on selected Hybrid architecture
+            if selected_architecture == "Hybrid Ensemble (SVM + XGBoost)":
+                svm_ens = models["svm_xgb_data"]["svm"]
+                xgb_ens = models["svm_xgb_data"]["xgb"]
+                le = models["svm_xgb_data"]["le"]
+                
+                p_svm = svm_ens.predict_proba(input_scaled)[0]
+                p_xgb = xgb_ens.predict_proba(input_scaled)[0]
                 probabilities = (p_svm + p_xgb) / 2.0
                 class_labels = list(le.classes_)
+                predicted_tier = le.inverse_transform([np.argmax(probabilities)])[0]
+
+            elif selected_architecture == "Hybrid Ensemble (ANN + Random Forest)":
+                ann_ens = models["ann_rf_data"]["ann"]
+                rf_ens = models["ann_rf_data"]["rf"]
+                le = models["ann_rf_data"]["le"]
+                
+                p_ann = ann_ens.predict_proba(input_scaled)[0]
+                p_rf = rf_ens.predict_proba(input_scaled)[0]
+                probabilities = (p_ann + p_rf) / 2.0
+                class_labels = list(le.classes_)
+                predicted_tier = le.inverse_transform([np.argmax(probabilities)])[0]
+
+            else:  # Hybrid Ensemble (KNN + Logistic Regression)
+                knn_ens = models["knn_lr_data"]["knn"]
+                lr_ens = models["knn_lr_data"]["lr"]
+                
+                p_knn = knn_ens.predict_proba(input_scaled)[0]
+                p_lr = lr_ens.predict_proba(input_scaled)[0]
+                probabilities = (p_knn + p_lr) / 2.0
+                class_labels = list(knn_ens.classes_)
                 predicted_tier = class_labels[np.argmax(probabilities)]
 
             # Dynamic Base Price Lookup from Dataset
@@ -202,8 +189,8 @@ with tab1:
 
             if year_col and year_col in cars.columns:
                 similar_cars = cars[
-                    (cars["Price_Tier"] == predicted_tier)
-                    & (cars[year_col].between(year - 2, year + 2))
+                    (cars["Price_Tier"] == predicted_tier) &
+                    (cars[year_col].between(year - 2, year + 2))
                 ]
             else:
                 similar_cars = pd.DataFrame()
@@ -217,124 +204,130 @@ with tab1:
             final_price = base_price * multiplier
 
             st.success(f"### Predicted Tier: **{predicted_tier} Class**")
-
+            
             m_col1, m_col2 = st.columns(2)
             with m_col1:
                 st.metric("Dynamic Base Valuation", f"${base_price:,.2f}")
             with m_col2:
                 st.metric("Condition Multiplier", f"{multiplier:.2f}x ({stars}★)")
-
+            
             st.metric("Final Recommended Market Price", f"${final_price:,.2f}")
 
-            # Confidence Distribution Bar Chart
             st.markdown("#### Model Confidence Distribution")
             prob_df = pd.DataFrame({
                 "Market Tier": class_labels,
-                "Confidence (%)": [p * 100 for p in probabilities],
+                "Confidence (%)": [p * 100 for p in probabilities]
             }).set_index("Market Tier")
             st.bar_chart(prob_df)
         else:
-            st.info(
-                "Fill in the vehicle specifications on the left and click **Predict"
-                " Market Tier & Value** to see results."
-            )
+            st.info("Fill in the vehicle specifications on the left and click **Predict Market Tier & Value** to see results.")
 
 # =============================================================================
 # TAB 2: MODEL EVALUATION & HEATMAP COMPARISON
 # =============================================================================
 with tab2:
     st.subheader("📊 Model Evaluation & Comparison Heatmap")
-    st.markdown(
-        "Compare baseline SVM performance against the Hybrid SVM + XGBoost"
-        " enhancement on test data."
+    st.markdown("Compare baseline models against their respective Hybrid enhancements on test data.")
+
+    compare_pair = st.selectbox(
+        "Select Model Architecture Pair to Compare:",
+        [
+            "SVM vs. Hybrid (SVM + XGBoost)",
+            "KNN vs. Hybrid (KNN + Logistic Regression)",
+            "ANN vs. Hybrid (ANN + Random Forest)"
+        ]
     )
 
     if X_test_scaled is None or y_test is None:
         st.warning("⚠️ Test dataset not detected from `loaddata.py`.")
     else:
-        class_names = list(le.classes_)
+        if compare_pair == "SVM vs. Hybrid (SVM + XGBoost)":
+            base_name = "Standalone SVM"
+            hybrid_name = "Hybrid (SVM + XGBoost)"
+            le = models["svm_xgb_data"]["le"]
+            class_names = list(le.classes_)
 
-        # Predictions
-        y_pred_svm = svm_model.predict(X_test_scaled)
-        if isinstance(y_pred_svm[0], (int, np.integer)):
-            pred_base = le.inverse_transform(y_pred_svm)
-        else:
-            pred_base = y_pred_svm
+            # Standalone
+            pred_base = models["svm_standalone"].predict(X_test_scaled)
+            
+            # Hybrid
+            p_svm = models["svm_xgb_data"]["svm"].predict_proba(X_test_scaled)
+            p_xgb = models["svm_xgb_data"]["xgb"].predict_proba(X_test_scaled)
+            pred_hybrid = le.inverse_transform(np.argmax((p_svm + p_xgb) / 2.0, axis=1))
 
-        p_svm_test = svm_ensemble.predict_proba(X_test_scaled)
-        p_xgb_test = xgb_ensemble.predict_proba(X_test_scaled)
-        comb_test = (p_svm_test + p_xgb_test) / 2.0
-        pred_hybrid = le.inverse_transform(np.argmax(comb_test, axis=1))
+        elif compare_pair == "KNN vs. Hybrid (KNN + Logistic Regression)":
+            base_name = "Standalone KNN"
+            hybrid_name = "Hybrid (KNN + Logistic Reg)"
+            class_names = list(models["knn_standalone"].classes_)
 
-        # --- Accuracy & Performance Gain Metrics ---
+            # Standalone
+            pred_base = models["knn_standalone"].predict(X_test_scaled)
+
+            # Hybrid
+            p_knn = models["knn_lr_data"]["knn"].predict_proba(X_test_scaled)
+            p_lr = models["knn_lr_data"]["lr"].predict_proba(X_test_scaled)
+            comb_proba = (p_knn + p_lr) / 2.0
+            pred_hybrid = np.array(class_names)[np.argmax(comb_proba, axis=1)]
+
+        else:  # ANN vs. Hybrid (ANN + Random Forest)
+            base_name = "Standalone ANN"
+            hybrid_name = "Hybrid (ANN + Random Forest)"
+            le = models["ann_rf_data"]["le"]
+            class_names = list(le.classes_)
+
+            # Standalone
+            pred_base = models["ann_standalone"].predict(X_test_scaled)
+
+            # Hybrid
+            p_ann = models["ann_rf_data"]["ann"].predict_proba(X_test_scaled)
+            p_rf = models["ann_rf_data"]["rf"].predict_proba(X_test_scaled)
+            pred_hybrid = le.inverse_transform(np.argmax((p_ann + p_rf) / 2.0, axis=1))
+
+        # --- Accuracy & Metrics ---
         acc_base = (pred_base == y_test).mean() * 100
         acc_hybrid = (pred_hybrid == y_test).mean() * 100
         gain = acc_hybrid - acc_base
 
         m1, m2, m3 = st.columns(3)
         with m1:
-            st.metric("Standalone SVM Accuracy", f"{acc_base:.2f}%")
+            st.metric(f"{base_name} Accuracy", f"{acc_base:.2f}%")
         with m2:
-            st.metric("Hybrid (SVM + XGBoost) Accuracy", f"{acc_hybrid:.2f}%")
+            st.metric(f"{hybrid_name} Accuracy", f"{acc_hybrid:.2f}%")
         with m3:
-            st.metric(
-                "Ensemble Performance Gain",
-                f"+{gain:.2f}%" if gain >= 0 else f"{gain:.2f}%",
-            )
+            st.metric("Ensemble Performance Gain", f"{'+' if gain >= 0 else ''}{gain:.2f}%")
 
         st.write("---")
 
-        # --- Accuracy Breakdown & Increment Heatmap ---
-        st.markdown("#### 📈 Tier-by-Tier Accuracy & Increment Heatmap")
-        report_svm = classification_report(
-            y_test, pred_base, output_dict=True, zero_division=0
-        )
-        report_hybrid = classification_report(
-            y_test, pred_hybrid, output_dict=True, zero_division=0
-        )
+        # --- Accuracy Breakdown Heatmap ---
+        st.markdown(f"#### 📈 Tier-by-Tier Comparison: {base_name} vs. {hybrid_name}")
+        report_base = classification_report(y_test, pred_base, output_dict=True, zero_division=0)
+        report_hybrid = classification_report(y_test, pred_hybrid, output_dict=True, zero_division=0)
 
-        svm_per_class = [
-            report_svm.get(c, {}).get("precision", 0) * 100 for c in class_names
-        ]
-        hybrid_per_class = [
-            report_hybrid.get(c, {}).get("precision", 0) * 100 for c in class_names
-        ]
+        base_per_class = [report_base.get(c, {}).get("precision", 0) * 100 for c in class_names]
+        hybrid_per_class = [report_hybrid.get(c, {}).get("precision", 0) * 100 for c in class_names]
 
         rows = class_names + ["Overall Accuracy"]
-        svm_vals = svm_per_class + [acc_base]
+        base_vals = base_per_class + [acc_base]
         hybrid_vals = hybrid_per_class + [acc_hybrid]
-        increments = [h - s for h, s in zip(hybrid_vals, svm_vals)]
+        increments = [h - b for h, b in zip(hybrid_vals, base_vals)]
 
-        df_acc = pd.DataFrame(
-            {
-                "Standalone SVM (%)": svm_vals,
-                "Hybrid (SVM + XGB) (%)": hybrid_vals,
-                "Increment (+Δ %)": increments,
-            },
-            index=rows,
-        )
+        df_acc = pd.DataFrame({
+            f"{base_name} (%)": base_vals,
+            f"{hybrid_name} (%)": hybrid_vals,
+            "Increment (+Δ %)": increments
+        }, index=rows)
 
-        annot_text = np.array(
-            [
-                [f"{s:.2f}%", f"{h:.2f}%", f"{'+' if d >= 0 else ''}{d:.2f}%"]
-                for s, h, d in zip(svm_vals, hybrid_vals, increments)
-            ]
-        )
+        annot_text = np.array([
+            [f"{b:.2f}%", f"{h:.2f}%", f"{'+' if d >= 0 else ''}{d:.2f}%"]
+            for b, h, d in zip(base_vals, hybrid_vals, increments)
+        ])
 
         fig_inc, ax_inc = plt.subplots(figsize=(8, 3.2))
         sns.heatmap(
-            df_acc,
-            annot=annot_text,
-            fmt="",
-            cmap="Blues",
-            linewidths=1,
-            linecolor="white",
-            cbar=True,
-            ax=ax_inc,
+            df_acc, annot=annot_text, fmt="", cmap="Blues",
+            linewidths=1, linecolor="white", cbar=True, ax=ax_inc
         )
-        ax_inc.set_title(
-            "Accuracy Comparison & Increment Gain Across Classes", pad=10
-        )
+        ax_inc.set_title(f"Accuracy Comparison & Increment Gain ({compare_pair})", pad=10)
         st.pyplot(fig_inc)
 
         st.write("---")
@@ -346,7 +339,7 @@ with tab2:
             y_pred_base=pred_base,
             y_pred_hybrid=pred_hybrid,
             class_names=class_names,
-            base_name="Standalone SVM",
-            hybrid_name="Hybrid (SVM + XGBoost)",
+            base_name=base_name,
+            hybrid_name=hybrid_name
         )
         st.pyplot(fig_cm)
