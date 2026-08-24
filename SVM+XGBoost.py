@@ -103,7 +103,16 @@ def predict_user_car():
         transmission_Manual = 1 if trans_choice == "1" else 0
         seller_Individual   = 1 if seller_choice == "1" else 0
         seller_Trustmark    = 1 if seller_choice == "3" else 0
-        brand_encoded       = 2.0 
+        print("\nEnter Car Brand Name (e.g., Maruti, Hyundai, BMW):")
+        brand_input = input("Brand: ").strip().capitalize()
+
+        brand_means = cars.groupby("brand")["Brand_Encoded"].first()
+
+        if brand_input in brand_means.index:
+            brand_encoded = brand_means[brand_input]
+        else:
+            brand_encoded = cars["Brand_Encoded"].median()
+        print(f"Unrecognized brand. Assigning generic market weight: {brand_encoded:.2f}")
         
         # --- ASSEMBLE FEATURE ARRAY ---
         input_features = np.array([[
