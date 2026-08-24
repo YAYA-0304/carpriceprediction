@@ -7,7 +7,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 # 1. IMPORT PREPROCESSED DATA & SCALER
-from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, cars
+from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, cars, brand_means
 
 # 2. ENCODE LABELS (Required for XGBoost: Low->0, Medium->1, High->2)
 le = LabelEncoder()
@@ -104,15 +104,22 @@ def predict_user_car():
         seller_Individual   = 1 if seller_choice == "1" else 0
         seller_Trustmark    = 1 if seller_choice == "3" else 0
         print("\nEnter Car Brand Name (e.g., Maruti, Hyundai, BMW):")
-        brand_input = input("Brand: ").strip().capitalize()
+        brand_input = input("Brand: ").strip().lower()
+        
+        matched_brand = None
+        for known_brand in brand_means.index:
+          if known_brand.lower() == brand_input.lower():
+              matched_brand = known_brand
+              break
 
-        brand_means = cars.groupby("brand")["Brand_Encoded"].first()
-
-        if brand_input in brand_means.index:
-            brand_encoded = brand_means[brand_input]
+        if matched_brand is not None:
+          brand_encoded = brand_means[matched_brand]
+          print(f"-> Recognized Brand! Market Weight: {brand_encoded:.2f}")
         else:
-            brand_encoded = cars["Brand_Encoded"].median()
-        print(f"Unrecognized brand. Assigning generic market weight: {brand_encoded:.2f}")
+          brand_encoded = brand_means.mean()
+          print(f"-> Unrecognized brand '{brand_input}'. Assigning generic market weight: {brand_encoded:.2f}")
+          
+                
         
         # --- ASSEMBLE FEATURE ARRAY ---
         input_features = np.array([[
