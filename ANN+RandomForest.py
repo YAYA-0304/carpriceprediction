@@ -1,77 +1,42 @@
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.neural_network import MLPClassifier
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
-import joblib
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 # 1. IMPORT PREPROCESSED DATA & SCALER
-from loaddata import X_test_scaled, X_train_scaled, cars, scaler, y_test, y_train, X
+from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, cars
 
-# 2. ENCODE STRING LABELS TO INTEGERS FOR ENSEMBLE CONSISTENCY (0, 1, 2)
-label_encoder = LabelEncoder()
-y_train_encoded = label_encoder.fit_transform(y_train)
-y_test_encoded = label_encoder.transform(y_test)
+# 2. ENCODE LABELS (Required for ensemble consistency: Low->0, Medium->1, High->2)
+le = LabelEncoder()
+y_train_enc = le.fit_transform(y_train)
+y_test_enc = le.transform(y_test)
 
-# 3. DEFINE BASE MODELS
-# Artificial Neural Network using Multi-Layer Perceptron
-ann_base = MLPClassifier(
-    hidden_layer_sizes=(64, 32),
-    activation='relu',
-    solver='adam',
-    max_iter=1000,
-    random_state=42
-)
+# 3. TRAIN MODELS (ANN + Random Forest)
+ann_model = MLPClassifier(hidden_layer_sizes=(64, 32), activation='relu', solver='adam', max_iter=1000, random_state=42)
+rf_model = RandomForestClassifier(n_estimators=150, random_state=42)
 
-# Random Forest Classifier
-rf_base = RandomForestClassifier(
-    n_estimators=150,
-    random_state=42
-)
-
-# 4. CREATE THE HYBRID ENSEMBLE (ANN + RANDOM FOREST)
-# Soft voting computes the weighted average of predicted probabilities
-ensemble_model = VotingClassifier(
-    estimators=[
-        ("ann", ann_base),
-        ("random_forest", rf_base)
-    ],
-    voting="soft",
-    weights=[1, 1]  # 50% ANN, 50% Random Forest
-)
-
-print("Training Hybrid ANN + Random Forest Classifier...")
-ensemble_model.fit(X_train_scaled, y_train_encoded)
+print("Training Ensemble Models (ANN + Random Forest)...")
+ann_model.fit(X_train_scaled, y_train_enc)
+rf_model.fit(X_train_scaled, y_train_enc)
 print("Training Complete!\n")
 
-# 5. EVALUATE PERFORMANCE METRICS
-y_pred_encoded = ensemble_model.predict(X_test_scaled)
-y_pred = label_encoder.inverse_transform(y_pred_encoded)
+# 4. ENSEMBLE EVALUATION (Soft Voting)
+ann_probs = ann_model.predict_proba(X_test_scaled)
+rf_probs = rf_model.predict_proba(X_test_scaled)
 
-accuracy = accuracy_score(y_test, y_pred)
+ensemble_probs = (ann_probs + rf_probs) / 2.0
+y_pred_enc = np.argmax(ensemble_probs, axis=1)
 
-precision = precision_score(
-    y_test,
-    y_pred,
-    average="weighted",
-    zero_division=0
-)
-
-recall = recall_score(
-    y_test,
-    y_pred,
-    average="weighted"
-)
-
-f1 = f1_score(
-    y_test,
-    y_pred,
-    average="weighted"
-)
+accuracy = accuracy_score(y_test_enc, y_pred_enc)
+precision = precision_score(y_test_enc, y_pred_enc, average='weighted', zero_division=0)
+recall = recall_score(y_test_enc, y_pred_enc, average='weighted')
+f1 = f1_score(y_test_enc, y_pred_enc, average='weighted')
 
 print("==========================================================")
-print("      HYBRID ENSEMBLE (ANN + RANDOM FOREST) REPORT       ")
+print("      ANN + RANDOM FOREST ENSEMBLE EVALUATION REPORT     ")
 print("==========================================================")
 print(f"Accuracy  : {accuracy * 100:.2f}%")
 print(f"Precision : {precision * 100:.2f}%")
@@ -79,16 +44,13 @@ print(f"Recall    : {recall * 100:.2f}%")
 print(f"F1-Score  : {f1 * 100:.2f}%")
 print("==========================================================\n")
 
+joblib.dump({"ann": ann_model, "rf": rf_model, "le": le}, "ann_rf_model.pkl")
+joblib.dump(scaler, "scaler.pkl")
+print("Saved models to 'ann_rf_model.pkl' and scaler to 'scaler.pkl'.\n")
 
 # =========================================================================
-# 6. INTERACTIVE PRICE PREDICTION FOR USER INPUT
+# 5. INTERACTIVE PRICE PREDICTION (DYNAMIC LOOKUP + CONFIDENCE)
 # =========================================================================
-
-TIER_BASE_PRICES = {
-    "Low": 250000,
-    "Medium": 550000,
-    "High": 1000000
-}
 
 CONDITION_MULTIPLIERS = {
     1: 0.80,  # Poor (-20%)
@@ -98,295 +60,117 @@ CONDITION_MULTIPLIERS = {
     5: 1.20   # Excellent / Like New (+20%)
 }
 
-
 def predict_user_car():
     print("\n==========================================================")
-    print("     CUSTOM CAR PRICE RECOMMENDATION SYSTEM (HYBRID)      ")
+    print(" ANN + RANDOM FOREST CAR PRICE RECOMMENDATION SYSTEM     ")
     print("==========================================================")
-
+    
     try:
         # --- NUMERIC INPUTS ---
         year = float(input("Enter Year (e.g., 2017): "))
-
-        km_driven = float(
-            input("Enter Kilometers Driven (e.g., 45000): ")
-        )
-
-        mileage = float(
-            input("Enter Mileage in km/l (e.g., 21.5): ")
-        )
-
-        engine = float(
-            input("Enter Engine CC (e.g., 1248): ")
-        )
-
-        max_power = float(
-            input("Enter Max Power in bhp (e.g., 85.0): ")
-        )
-
-        seats = float(
-            input("Enter Number of Seats (e.g., 5): ")
-        )
-
-        # --- MENU CHOICE: FUEL TYPE ---
+        km_driven = float(input("Enter Kilometers Driven (e.g., 45000): "))
+        mileage = float(input("Enter Mileage in km/l (e.g., 21.5): "))
+        engine = float(input("Enter Engine CC (e.g., 1248): "))
+        max_power = float(input("Enter Max Power in bhp (e.g., 85.0): "))
+        seats = float(input("Enter Number of Seats (e.g., 5): "))
+        
+        # --- MENU CHOICES ---
         print("\nSelect Fuel Type:")
-        print("  [1] Diesel")
-        print("  [2] Petrol")
-        print("  [3] LPG")
-        print("  [4] CNG / Other")
-
-        fuel_choice = input(
-            "Enter choice (1-4): "
-        ).strip()
-
-        # --- MENU CHOICE: TRANSMISSION ---
+        print("  [1] Diesel | [2] Petrol | [3] LPG | [4] CNG / Other")
+        fuel_choice = input("Enter choice (1-4): ").strip()
+        
         print("\nSelect Transmission Type:")
-        print("  [1] Manual")
-        print("  [2] Automatic")
-
-        trans_choice = input(
-            "Enter choice (1-2): "
-        ).strip()
-
-        # --- MENU CHOICE: SELLER TYPE ---
+        print("  [1] Manual | [2] Automatic")
+        trans_choice = input("Enter choice (1-2): ").strip()
+        
         print("\nSelect Seller Type:")
-        print("  [1] Individual")
-        print("  [2] Dealer")
-        print("  [3] Trustmark Dealer")
-
-        seller_choice = input(
-            "Enter choice (1-3): "
-        ).strip()
-
-        # --- BRAND VALUE ENCODING ---
-        print("\nEnter Car Brand Name (e.g., Maruti, Hyundai, BMW):")
-
-        brand_input = input(
-            "Brand: "
-        ).strip().capitalize()
-
-        # Resolve target numerical encoding matching loaddata.py
-        brand_means = cars.groupby(
-            "brand"
-        )["Brand_Encoded"].first()
-
-        if brand_input in brand_means.index:
-            brand_encoded = brand_means[brand_input]
-
-        else:
-            brand_encoded = cars["Brand_Encoded"].median()
-
-            print(
-                f"-> Unrecognized brand. Assigning generic market weight: "
-                f"{brand_encoded:.2f}"
-            )
-
-        # --- MENU CHOICE: CONDITION RATING ---
+        print("  [1] Individual | [2] Dealer | [3] Trustmark Dealer")
+        seller_choice = input("Enter choice (1-3): ").strip()
+        
         print("\nSelect Physical Condition Rating:")
         print("  1 Star  : Poor (-20%)")
         print("  2 Stars : Below Average (-10%)")
         print("  3 Stars : Good / Fair (Standard Market)")
         print("  4 Stars : Very Good (+10%)")
         print("  5 Stars : Excellent / Like New (+20%)")
+        condition_stars = int(input("Enter Rating (1-5): "))
 
-        condition_stars = int(
-            input("Enter Rating (1-5): ")
-        )
+        # --- ONE-HOT BINARY ENCODING ---
+        fuel_Diesel = 1 if fuel_choice == "1" else 0
+        fuel_Petrol = 1 if fuel_choice == "2" else 0
+        fuel_LPG    = 1 if fuel_choice == "3" else 0
+        
+        transmission_Manual = 1 if trans_choice == "1" else 0
+        seller_Individual   = 1 if seller_choice == "1" else 0
+        seller_Trustmark    = 1 if seller_choice == "3" else 0
+        
+        print("\nEnter Car Brand Name (e.g., Maruti, Hyundai, BMW):")
+        brand_input = input("Brand: ").strip().capitalize()
 
-        if condition_stars not in CONDITION_MULTIPLIERS:
-            print(
-                "Invalid rating choice. "
-                "Defaulting to 3 Stars (Good)."
-            )
+        brand_means = cars.groupby("brand")["Brand_Encoded"].first()
 
-            condition_stars = 3
+        if brand_input in brand_means.index:
+            brand_encoded = brand_means[brand_input]
+        else:
+            brand_encoded = cars["Brand_Encoded"].median()
+            print(f"Unrecognized brand. Assigning generic market weight: {brand_encoded:.2f}")
+        
+        # --- ASSEMBLE FEATURE ARRAY ---
+        input_features = np.array([[
+            year, km_driven, mileage, engine, max_power, seats,
+            fuel_Diesel, fuel_LPG, fuel_Petrol,
+            transmission_Manual, seller_Individual, seller_Trustmark,
+            brand_encoded
+        ]])
+        
+        # --- SCALE FEATURES & PREDICT ENSEMBLE PROBABILITIES ---
+        input_scaled = scaler.transform(input_features)
+        
+        p_ann = ann_model.predict_proba(input_scaled)[0]
+        p_rf = rf_model.predict_proba(input_scaled)[0]
+        
+        # Combine model probabilities (Soft Voting)
+        combined_probs = (p_ann + p_rf) / 2.0
+        predicted_idx = np.argmax(combined_probs)
+        predicted_tier = le.inverse_transform([predicted_idx])[0]
+        
+        # --- DYNAMIC BASELINE LOOKUP FROM DATASET ---
+        price_col = "selling_price" if "selling_price" in cars.columns else "Price"
+        year_col = "year" if "year" in cars.columns else ("Year" if "Year" in cars.columns else None)
 
-        # =========================================================================
-        # 7. MAP USER INPUT TO ONE-HOT ENCODED MATRIX
-        # =========================================================================
+        if year_col and year_col in cars.columns:
+            similar_cars = cars[
+                (cars["Price_Tier"] == predicted_tier)
+                & (cars[year_col].between(year - 2, year + 2))
+            ]
+        else:
+            similar_cars = pd.DataFrame()
 
-        # Initialize an empty row matching the exact layout of data features
-        input_data = {
-            col: 0.0
-            for col in X.columns
-        }
+        if len(similar_cars) >= 3:
+            base_price = float(similar_cars[price_col].median())
+        else:
+            base_price = float(cars[cars["Price_Tier"] == predicted_tier][price_col].median())
 
-        # Populate numerical values
-        input_data['year'] = year
-        input_data['km_driven'] = km_driven
-        input_data['mileage(km/ltr/kg)'] = mileage
-        input_data['engine'] = engine
-        input_data['max_power'] = max_power
-        input_data['seats'] = seats
-        input_data['Brand_Encoded'] = brand_encoded
-
-        # Process fuel type
-        if (
-            fuel_choice == '2'
-            and 'fuel_Petrol' in input_data
-        ):
-            input_data['fuel_Petrol'] = 1
-
-        elif (
-            fuel_choice == '3'
-            and 'fuel_LPG' in input_data
-        ):
-            input_data['fuel_LPG'] = 1
-
-        elif (
-            fuel_choice == '4'
-            and 'fuel_CNG' in input_data
-        ):
-            input_data['fuel_CNG'] = 1
-
-        # Diesel remains all zero if used as baseline
-
-        # Process transmission
-        if (
-            trans_choice == '2'
-            and 'transmission_Automatic' in input_data
-        ):
-            input_data['transmission_Automatic'] = 1
-
-        # Process seller type
-        if (
-            seller_choice == '2'
-            and 'seller_type_Dealer' in input_data
-        ):
-            input_data['seller_type_Dealer'] = 1
-
-        elif (
-            seller_choice == '3'
-            and 'seller_type_Trustmark Dealer' in input_data
-        ):
-            input_data['seller_type_Trustmark Dealer'] = 1
-
-        # Transform dictionary vector into DataFrame matching training sequence
-        user_df = pd.DataFrame(
-            [input_data]
-        )[X.columns]
-
-        # Scale features
-        input_scaled = scaler.transform(
-            user_df
-        )
-
-        # =========================================================================
-        # 8. RUN HYBRID PREDICTION AND APPLY PRICE PIPELINE
-        # =========================================================================
-
-        predicted_encoded = ensemble_model.predict(
-            input_scaled
-        )[0]
-
-        predicted_tier = label_encoder.inverse_transform(
-            [predicted_encoded]
-        )[0]
-
-        # --- CALCULATE CONFIDENCE SCORES ---
-        probabilities = ensemble_model.predict_proba(
-            input_scaled
-        )[0]
-
-        base_price = TIER_BASE_PRICES.get(
-            predicted_tier,
-            500000
-        )
-
-        multiplier = CONDITION_MULTIPLIERS.get(
-            condition_stars,
-            1.0
-        )
-
-        final_recommended_price = (
-            base_price * multiplier
-        )
-
-        # --- DISPLAY PREDICTION SUMMARY ---
+        multiplier = CONDITION_MULTIPLIERS.get(condition_stars, 1.0)
+        final_recommended_price = base_price * multiplier
+        
+        # --- DISPLAY PREDICTION RESULTS & CONFIDENCE ---
         print("\n----------------------------------------------------------")
         print("                 PREDICTION RESULTS                       ")
         print("----------------------------------------------------------")
+        print(f"Ensemble Predicted Tier : {predicted_tier}")
+        print("Ensemble Confidence Breakdown (ANN + Random Forest):")
 
-        print(
-            f"Predicted Market Tier : "
-            f"{predicted_tier}"
-        )
+        for idx, class_name in enumerate(le.classes_):
+            print(f"  - {class_name:<6} Tier : {combined_probs[idx] * 100:.2f}%")
 
-        print("Prediction Confidence Breakdown:")
-
-        for class_name, prob in zip(
-            label_encoder.classes_,
-            probabilities
-        ):
-            print(
-                f"  - {class_name:6s} Tier : "
-                f"{prob * 100:.2f}%"
-            )
-
-        print(
-            f"Condition Rating      : "
-            f"{condition_stars} Star(s) "
-            f"(Multiplier: {multiplier:.2f}x)"
-        )
-
-        print(
-            f"FINAL RECOMMENDED PRICE: "
-            f"INR {final_recommended_price:,.2f}"
-        )
-
+        print(f"Condition Rating        : {condition_stars} Star(s) (Multiplier: {multiplier:.2f}x)")
+        print(f"Dynamic Base Value      : ${base_price:,.2f}")
+        print(f"FINAL RECOMMENDED PRICE : ${final_recommended_price:,.2f}")
         print("==========================================================\n")
 
     except ValueError:
-        print(
-            "\n[Error] Invalid input! Please enter numbers "
-            "for specs and menu selections."
-        )
+        print("\n[Error] Invalid input! Please enter numbers for specs and menu selections.")
 
-    except Exception as e:
-        print(
-            f"\n[Error] System execution issue: {e}"
-        )
-
-
-# =========================================================================
-# 9. SAVE MODEL ARTIFACTS
-# =========================================================================
-
-print("Saving model artifacts...")
-
-# Fit standalone ANN explicitly before saving
-ann_base.fit(
-    X_train_scaled,
-    y_train_encoded
-)
-
-joblib.dump(
-    ann_base,
-    "ann_model.pkl"
-)
-
-# Save hybrid ANN + Random Forest model
-joblib.dump(
-    ensemble_model,
-    "ann_rf_model.pkl"
-)
-
-# Save preprocessors
-joblib.dump(
-    scaler,
-    "scaler.pkl"
-)
-
-joblib.dump(
-    label_encoder,
-    "label_encoder.pkl"
-)
-
-print(
-    "All artifacts successfully saved to .pkl files!\n"
-)
-
-
-# Run interactive user testing loop
 if __name__ == "__main__":
     predict_user_car()
