@@ -5,7 +5,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import joblib
 
 # 1. IMPORT PREPROCESSED DATA & SCALER
-from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, cars, X
+from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, cars, brand_means, X_train
 
 # 2. TRAIN THE ANN CLASSIFIER
 ann_model = MLPClassifier(
@@ -114,20 +114,20 @@ def predict_user_car():
 
         # --- BRAND VALUE ENCODING ---
         print("\nEnter Car Brand Name (e.g., Maruti, Hyundai, BMW):")
-        brand_input = input("Brand: ").strip().capitalize()
+        brand_input = input("Brand: ").strip()
 
-        brand_means = cars.groupby("brand")["Brand_Encoded"].first()
+        matched_brand = None
+        for known_brand in brand_means.index:
+            if known_brand.lower() == brand_input.lower():
+                matched_brand = known_brand
+                break
 
-        if brand_input in brand_means.index:
-            brand_encoded = brand_means[brand_input]
-
+        if matched_brand is not None:
+            brand_encoded = brand_means[matched_brand]
+            print(f"-> Recognized Brand! Market Weight: {brand_encoded:.2f}")
         else:
-            brand_encoded = cars["Brand_Encoded"].median()
-
-            print(
-                f"Unrecognized brand. Assigning generic market weight: "
-                f"{brand_encoded:.2f}"
-            )
+            brand_encoded = brand_means.mean()
+            print(f"-> Unrecognized brand. Assigning generic market weight: {brand_encoded:.2f}")
 
 
         # =========================================================================
@@ -135,7 +135,7 @@ def predict_user_car():
         # =========================================================================
 
         # Create a base dictionary matching all features used during training
-        input_data = {col: 0.0 for col in X.columns}
+        input_data = {col: 0.0 for col in X_train.columns}
 
         # Assign numeric values
         input_data['year'] = year
@@ -187,7 +187,7 @@ def predict_user_car():
 
 
         # Convert dictionary into DataFrame using exact training column order
-        user_df = pd.DataFrame([input_data])[X.columns]
+        user_df = pd.DataFrame([input_data])[X_train.columns]
 
         # Scale features
         input_scaled = scaler.transform(user_df)

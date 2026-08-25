@@ -8,8 +8,12 @@ cars = pd.read_csv("cardekho.csv")
 print("Initial Data details")
 print(f"Original Data Shape : {cars.shape}")
 
+# Check for exact duplicate rows
+duplicate_count = cars.duplicated().sum()
+print(f"Total duplicate rows in dataset: {duplicate_count}")
+
 # Remove explicit null rows
-cars = cars.dropna()
+cars = cars.dropna().drop_duplicates()
 
 # 2. EXTRACT THE BRAND NAME FROM THE 'name' COLUMN
 cars['brand'] = cars['name'].str.split(' ').str[0]
@@ -49,29 +53,33 @@ cars["Price_Tier"] = pd.qcut(
     cars["selling_price"], q=3, labels=["Low", "Medium", "High"]
 )
 
-# Convert Price_Tier to numbers temporarily to calculate brand strength
-tier_mapping = {"Low": 1, "Medium": 2, "High": 3}
-cars["Tier_Num"] = cars["Price_Tier"].map(tier_mapping).astype(int)
-
-# Calculate the average tier for each brand
-brand_means = cars.groupby("brand")["Tier_Num"].mean()
-
-# Replace the text "brand" column with these numerical averages
-cars["Brand_Encoded"] = cars["brand"].map(brand_means)
-
-# Drop the temporary column
-cars = cars.drop(columns=["Tier_Num"])
 
 # 6. SEPARATE FEATURES (X) FROM THE TARGETS (y)
-columns_to_drop = ["name", "brand", "owner", "selling_price", "Price_Tier"]
+columns_to_drop = ["name", "owner", "selling_price", "Price_Tier"]
 X = cars.drop(columns=columns_to_drop, errors="ignore")
 
 y_class = cars["Price_Tier"]  # Classification target (For KNN, SVM, ANN)
 
 # Split into training and testing data (80/20 split)
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y_class, test_size=0.2, random_state=42
+    X, y_class, test_size=0.2, random_state=42, stratify=y_class
 )
+
+# 7. ENCODE BRAND USING ONLY TRAINING LABELS (Prevents Data Leakage)
+tier_mapping = {"Low": 1, "Medium": 2, "High": 3}
+y_train_num = y_train.map(tier_mapping).astype(int)
+
+# Group strictly on X_train to calculate brand strength
+brand_means = y_train_num.groupby(X_train["brand"]).mean()
+global_mean = y_train_num.mean()
+
+# Map to train and test
+X_train["Brand_Encoded"] = X_train["brand"].map(brand_means).fillna(global_mean)
+X_test["Brand_Encoded"] = X_test["brand"].map(brand_means).fillna(global_mean)
+
+# Drop raw 'brand' text column
+X_train = X_train.drop(columns=["brand"])
+X_test = X_test.drop(columns=["brand"])
 
 # Normalize features (Scale between 0 and 1)
 scaler = MinMaxScaler()
