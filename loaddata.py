@@ -19,7 +19,6 @@ cars = cars.dropna().drop_duplicates()
 cars['brand'] = cars['name'].str.split(' ').str[0]
 
 # 3. CLEAN UP TEXT UNITS FROM NUMERIC COLUMNS SAFELY
-# Convert to string first to ensure .str operations do not crash on numeric types
 if 'mileage(km/ltr/kg)' in cars.columns:
     cars['mileage(km/ltr/kg)'] = cars['mileage(km/ltr/kg)'].astype(str).str.split(' ').str[0]
 
@@ -28,7 +27,6 @@ if 'engine' in cars.columns:
 
 if 'max_power' in cars.columns:
     cars['max_power'] = cars['max_power'].astype(str).str.split(' ').str[0]
-    # Replace empty string spaces ' ' with NaN so they can be dropped properly
     cars['max_power'] = cars['max_power'].replace(r'^\s*$', np.nan, regex=True)
 
 # Convert these cleaned columns to actual floating-point numbers
@@ -42,7 +40,6 @@ cars = cars.dropna()
 
 # 4. CONVERT CATEGORICAL DATA INTO NUMBERS (One-Hot Encoding)
 categorical_cols = ["fuel", "transmission", "seller_type"]
-# filter out columns that don't exist just in case
 categorical_cols = [col for col in categorical_cols if col in cars.columns]
 cars = pd.get_dummies(
     cars, columns=categorical_cols, drop_first=True, dtype=int
@@ -53,16 +50,16 @@ cars["Price_Tier"] = pd.qcut(
     cars["selling_price"], q=3, labels=["Low", "Medium", "High"]
 )
 
-
-# 6. SEPARATE FEATURES (X) FROM THE TARGETS (y)
+# 6. SEPARATE FEATURES (X) FROM TARGETS (y_class & y_price)
 columns_to_drop = ["name", "owner", "selling_price", "Price_Tier"]
 X = cars.drop(columns=columns_to_drop, errors="ignore")
 
-y_class = cars["Price_Tier"]  # Classification target (For KNN, SVM, ANN)
+y_class = cars["Price_Tier"]       # Classification target (Low / Medium / High)
+y_price = cars["selling_price"]     # Regression target (Continuous Price)
 
-# Split into training and testing data (80/20 split)
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y_class, test_size=0.2, random_state=42, stratify=y_class
+# Split both targets together to ensure index/row alignment
+X_train, X_test, y_train, y_test, y_train_price, y_test_price = train_test_split(
+    X, y_class, y_price, test_size=0.2, random_state=42, stratify=y_class
 )
 
 # 7. ENCODE BRAND USING ONLY TRAINING LABELS (Prevents Data Leakage)
@@ -86,40 +83,23 @@ scaler = MinMaxScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-
-# 1. Grab raw cardekho.csv to ensure we get the original text names and prices
+# 8. SAVE TEST DATASET FOR VERIFICATION
 raw_cars = pd.read_csv("cardekho.csv")
-
-# 2. Extract the exact rows used in X_test using their index
 test_df = raw_cars.loc[X_test.index].copy()
-
-# 3. Add the calculated Price_Tier column so you can see the true class too
 test_df['Price_Tier'] = y_test
-
-# 4. Save to a clean CSV file
 test_df.to_csv("test_dataset.csv", index=False)
 
 print("\n-----------------------------------")
 print("Saved Test Dataset to 'test_dataset.csv'!")
 print("===================================")
 
-# ==========================================
-# 7. VERIFY PREPROCESSING SUCCESS
-# ==========================================
+# 9. VERIFY PREPROCESSING SUCCESS
 print("\n--- DATA PREPROCESSING COMPLETE ---")
 print(f"Features trained shape: {X_train_scaled.shape}")
 print(f"Features tested shape : {X_test_scaled.shape}")
-print("\nAll categorical features converted and values normalized successfully!")
-
-# Print original columns vs columns after encoding/dropping
-print("\n--- COLUMN SELECTION CHANGES ---")
-print(f"Original Columns ({len(cars.columns)}): \n{list(cars.columns)}")
-
-# Temporary DataFrame to see columns left in X before converting to NumPy
-print(f"\nProcessed Feature Columns ({len(X.columns)}): \n{list(X.columns)}")
-
+print(f"Classification train targets: {y_train.shape}")
+print(f"Regression train targets    : {y_train_price.shape}")
 print("\n--- FINAL MODEL READINESS CHECK ---")
 print(f"Any missing values in X_train: {np.isnan(X_train_scaled).any()}")
 print(f"Any missing values in X_test : {np.isnan(X_test_scaled).any()}")
 print("-----------------------------------")
-
