@@ -324,7 +324,7 @@ with tab2:
         with m2:
             st.metric(f"{hybrid_name} Accuracy", f"{acc_hybrid:.2f}%")
         with m3:
-            st.metric("Ensemble Accuracy Gain", f"{'+' if gain >= 0 else ''}{gain:.2f}%")
+            st.metric("Ensemble Accuracy Gain", f"{acc_hybrid:.2f}%", delta=f"{gain:+.2f}%")
 
         # --- Regression Metrics ---
         if y_test_price is not None:
@@ -337,14 +337,21 @@ with tab2:
             if pred_base_price is not None:
                 mae_base = mean_absolute_error(y_test_price, pred_base_price)
                 r2_base = r2_score(y_test_price, pred_base_price)
+                
+                # Raw differences: (Hybrid - Base)
+                mae_diff = mae_hybrid - mae_base
+                r2_diff = r2_hybrid - r2_base
+                
                 with r1:
                     st.metric(f"{base_name} MAE", f"${mae_base:,.2f}")
                 with r2:
-                    st.metric(f"{hybrid_name} MAE", f"${mae_hybrid:,.2f}", delta=f"-${mae_base - mae_hybrid:,.2f}" if mae_base > mae_hybrid else f"+${mae_hybrid - mae_base:,.2f}", delta_color="inverse")
+                    # Positive change -> Up arrow (Green), Negative change -> Down arrow (Red)
+                    mae_delta_str = f"+${mae_diff:,.2f}" if mae_diff >= 0 else f"-${abs(mae_diff):,.2f}"
+                    st.metric(f"{hybrid_name} MAE", f"${mae_hybrid:,.2f}", delta=mae_delta_str)
                 with r3:
                     st.metric(f"{base_name} R² Score", f"{r2_base:.4f}")
                 with r4:
-                    st.metric(f"{hybrid_name} R² Score", f"{r2_hybrid:.4f}", delta=f"{r2_hybrid - r2_base:+.4f}")
+                    st.metric(f"{hybrid_name} R² Score", f"{r2_hybrid:.4f}", delta=f"{r2_diff:+.4f}")
             else:
                 with r1:
                     st.metric(f"{hybrid_name} MAE", f"${mae_hybrid:,.2f}")

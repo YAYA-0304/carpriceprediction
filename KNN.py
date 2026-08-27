@@ -1,50 +1,49 @@
 import numpy as np
 import pandas as pd
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, r2_score
 import joblib
 
 # 1. IMPORT PREPROCESSED DATA & SCALER
-from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, scaler, brand_means
+from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, y_train_price, y_test_price, scaler, brand_means
 
-# 2. TRAIN KNN MODEL
-knn_model = KNeighborsClassifier(n_neighbors=5, weights='distance')
+# 2. TRAIN KNN CLASSIFIER & KNN REGRESSOR
+knn_classifier = KNeighborsClassifier(n_neighbors=5, weights='distance')
+knn_regressor = KNeighborsRegressor(n_neighbors=5, weights='distance')
 
-print("Training K-Nearest Neighbors (KNN) Classifier...")
-knn_model.fit(X_train_scaled, y_train)
+print("Training K-Nearest Neighbors (KNN) Classifier & Regressor...")
+knn_classifier.fit(X_train_scaled, y_train)
+knn_regressor.fit(X_train_scaled, y_train_price)
 print("Training Complete!\n")
 
-joblib.dump(knn_model, "knn_model.pkl")
-print("Saved trained KNN model to 'knn_model.pkl'.\n")
+joblib.dump({"classifier": knn_classifier, "regressor": knn_regressor}, "knn_model.pkl")
+print("Saved trained KNN models to 'knn_model.pkl'.\n")
 
 # 3. EVALUATE PERFORMANCE METRICS
-def evaluate(model, X, y_true):
-    y_pred = model.predict(X)
-    return {
-        "accuracy": accuracy_score(y_true, y_pred),
-        "precision": precision_score(y_true, y_pred, average='weighted', zero_division=0),
-        "recall": recall_score(y_true, y_pred, average='weighted'),
-        "f1": f1_score(y_true, y_pred, average='weighted')
-    }
+y_pred_tier = knn_classifier.predict(X_test_scaled)
+y_pred_price = knn_regressor.predict(X_test_scaled)
 
-results = evaluate(knn_model, X_test_scaled, y_test)
+accuracy = accuracy_score(y_test, y_pred_tier)
+precision = precision_score(y_test, y_pred_tier, average='weighted', zero_division=0)
+recall = recall_score(y_test, y_pred_tier, average='weighted')
+f1 = f1_score(y_test, y_pred_tier, average='weighted')
+mae = mean_absolute_error(y_test_price, y_pred_price)
+r2 = r2_score(y_test_price, y_pred_price)
 
 print("==========================================================")
-print("             KNN CLASSIFIER PERFORMANCE REPORT            ")
+print("             KNN PERFORMANCE REPORT                       ")
 print("==========================================================")
-print(f"Accuracy  : {results['accuracy'] * 100:.2f}%")
-print(f"Precision : {results['precision'] * 100:.2f}%")
-print(f"Recall    : {results['recall'] * 100:.2f}%")
-print(f"F1-Score  : {results['f1'] * 100:.2f}%")
+print("--- Classification (Price Tier) ---")
+print(f"Accuracy       : {accuracy * 100:.2f}%")
+print(f"Precision      : {precision * 100:.2f}%")
+print(f"Recall         : {recall * 100:.2f}%")
+print(f"F1-Score       : {f1 * 100:.2f}%")
+print("\n--- Regression (Selling Price) ---")
+print(f"Price MAE      : ${mae:,.2f}")
+print(f"Price R2-Score : {r2:.4f}")
 print("==========================================================\n")
 
 # 4. INTERACTIVE PRICE PREDICTION FOR USER INPUT
-TIER_BASE_PRICES = {
-    "Low": 250000,
-    "Medium": 550000,
-    "High": 1000000
-}
-
 CONDITION_MULTIPLIERS = {
     1: 0.80,
     2: 0.90,
@@ -124,20 +123,15 @@ def predict_user_car():
 
         input_scaled = scaler.transform(input_features)
 
-        # # Inspect the 5 nearest neighbors
-        # distances, indices = knn_model.kneighbors(input_scaled)
-        # neighbor_classes = y_train.iloc[indices[0]].values
-        
-        # print("\n--- 5 Nearest Neighbors Found ---")
-        # for i, (idx, dist, cls) in enumerate(zip(indices[0], distances[0], neighbor_classes), 1):
-        #     print(f"Neighbor {i}: Index={idx} | Distance={dist:.4f} | Tier={cls}")
-
-        # Prediction Logic
-        knn_proba = knn_model.predict_proba(input_scaled)[0]
-        class_labels = knn_model.classes_
+        # 1. Classification Prediction (Price Tier)
+        knn_proba = knn_classifier.predict_proba(input_scaled)[0]
+        class_labels = knn_classifier.classes_
         predicted_tier = class_labels[np.argmax(knn_proba)]
 
-        base_price = TIER_BASE_PRICES.get(predicted_tier, 500000)
+        # 2. Regression Prediction (Continuous Exact Price)
+        base_price = float(knn_regressor.predict(input_scaled)[0])
+
+        # 3. Apply Multiplier
         multiplier = CONDITION_MULTIPLIERS.get(condition_stars, 1.0)
         final_recommended_price = base_price * multiplier
 
@@ -149,8 +143,8 @@ def predict_user_car():
         print("\nConfidence Breakdown:")
         for label, prob in zip(class_labels, knn_proba):
             print(f"  - {label:<6} Tier : {prob * 100:.2f}%")
-        print(f"\nBase Market Value          : ${base_price:,.2f}")
-        print(f"Condition Rating Multiplier: {multiplier:.2f}x")
+        print(f"\nML Predicted Base Value    : ${base_price:,.2f}")
+        print(f"Condition Multiplier       : {multiplier:.2f}x ({condition_stars} Stars)")
         print(f"FINAL RECOMMENDED PRICE    : ${final_recommended_price:,.2f}")
         print("==========================================================\n")
 
