@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, mean_absolute_error, r2_score
 
 # 1. IMPORT DATASET & GRAPH UTILITIES
-from loaddata import X_test_scaled, y_test, cars, brand_means
+from loaddata import X_test_scaled, y_test, y_test_price, brand_means
 from plot_graph import plot_side_by_side_confusion_matrix
 
 # 2. PAGE CONFIGURATION
@@ -24,10 +24,10 @@ st.set_page_config(
 def load_all_models():
     scaler_obj = joblib.load("scaler.pkl")
     
-    # Standalone models
+    # Standalone models (contain both classifier and regressor)
     svm_standalone = joblib.load("svm_model.pkl")
-    knn_standalone = joblib.load("knn_model.pkl")
-    ann_standalone = joblib.load("ann_model.pkl")
+    knn_standalone = joblib.load("knn_model.pkl") if pd.io.common.file_exists("knn_model.pkl") else None
+    ann_standalone = joblib.load("ann_models.pkl") if pd.io.common.file_exists("ann_models.pkl") else joblib.load("ann_model.pkl")
     
     # Hybrid models
     svm_xgb_data = joblib.load("svm_xgb_model.pkl")
@@ -66,10 +66,10 @@ CONDITION_MULTIPLIERS = {
 }
 
 # -----------------------------------------------------------------------------
-# 3. HEADER & SIDEBAR (HYBRID SELECTION ONLY)
+# 3. HEADER & SIDEBAR
 # -----------------------------------------------------------------------------
 st.title("🚗 Car Price Tier Prediction & Valuation System")
-st.markdown("Automated market tier classification and comparative evaluation across Machine Learning Architectures.")
+st.markdown("Automated market tier classification and ML continuous price regression across Architectures.")
 st.markdown("---")
 
 st.sidebar.header("⚙️ Active Hybrid Model")
@@ -138,7 +138,6 @@ with tab1:
             seller_Individual = 1 if seller_type == "Individual" else 0
             seller_Trustmark = 1 if seller_type == "Trustmark Dealer" else 0
 
-            # Encode brand
             brand_encoded = float(brand_means.get(brand_input, brand_means.mean()))
 
             input_features = np.array([[
@@ -150,55 +149,62 @@ with tab1:
 
             input_scaled = scaler.transform(input_features)
 
-            # Prediction based on selected Hybrid architecture
+            # Prediction via Selected Hybrid Architecture
             if selected_architecture == "Hybrid Ensemble (SVM + XGBoost)":
-                svm_ens = models["svm_xgb_data"]["svm"]
-                xgb_ens = models["svm_xgb_data"]["xgb"]
+                svm_clf = models["svm_xgb_data"]["svm_clf"]
+                xgb_clf = models["svm_xgb_data"]["xgb_clf"]
+                svm_reg = models["svm_xgb_data"]["svm_reg"]
+                xgb_reg = models["svm_xgb_data"]["xgb_reg"]
                 le = models["svm_xgb_data"]["le"]
                 
-                p_svm = svm_ens.predict_proba(input_scaled)[0]
-                p_xgb = xgb_ens.predict_proba(input_scaled)[0]
+                # Tier
+                p_svm = svm_clf.predict_proba(input_scaled)[0]
+                p_xgb = xgb_clf.predict_proba(input_scaled)[0]
                 probabilities = (p_svm + p_xgb) / 2.0
                 class_labels = list(le.classes_)
                 predicted_tier = le.inverse_transform([np.argmax(probabilities)])[0]
 
+                # Exact ML Regression Price
+                price_svm = float(svm_reg.predict(input_scaled)[0])
+                price_xgb = float(xgb_reg.predict(input_scaled)[0])
+                base_price = (price_svm + price_xgb) / 2.0
+
             elif selected_architecture == "Hybrid Ensemble (ANN + Random Forest)":
-                ann_ens = models["ann_rf_data"]["ann"]
-                rf_ens = models["ann_rf_data"]["rf"]
+                ann_clf = models["ann_rf_data"]["ann_clf"]
+                rf_clf = models["ann_rf_data"]["rf_clf"]
+                ann_reg = models["ann_rf_data"]["ann_reg"]
+                rf_reg = models["ann_rf_data"]["rf_reg"]
                 le = models["ann_rf_data"]["le"]
                 
-                p_ann = ann_ens.predict_proba(input_scaled)[0]
-                p_rf = rf_ens.predict_proba(input_scaled)[0]
+                # Tier
+                p_ann = ann_clf.predict_proba(input_scaled)[0]
+                p_rf = rf_clf.predict_proba(input_scaled)[0]
                 probabilities = (p_ann + p_rf) / 2.0
                 class_labels = list(le.classes_)
                 predicted_tier = le.inverse_transform([np.argmax(probabilities)])[0]
 
+                # Exact ML Regression Price
+                price_ann = float(ann_reg.predict(input_scaled)[0])
+                price_rf = float(rf_reg.predict(input_scaled)[0])
+                base_price = (price_ann + price_rf) / 2.0
+
             else:  # Hybrid Ensemble (KNN + Logistic Regression)
-                knn_ens = models["knn_lr_data"]["knn"]
-                lr_ens = models["knn_lr_data"]["lr"]
+                knn_clf = models["knn_lr_data"]["knn_clf"]
+                logreg_clf = models["knn_lr_data"]["logreg_clf"]
+                knn_reg = models["knn_lr_data"]["knn_reg"]
+                lin_reg = models["knn_lr_data"]["lin_reg"]
                 
-                p_knn = knn_ens.predict_proba(input_scaled)[0]
-                p_lr = lr_ens.predict_proba(input_scaled)[0]
+                # Tier
+                p_knn = knn_clf.predict_proba(input_scaled)[0]
+                p_lr = logreg_clf.predict_proba(input_scaled)[0]
                 probabilities = (p_knn + p_lr) / 2.0
-                class_labels = list(knn_ens.classes_)
+                class_labels = list(knn_clf.classes_)
                 predicted_tier = class_labels[np.argmax(probabilities)]
 
-            # Dynamic Base Price Lookup from Dataset
-            price_col = "selling_price" if "selling_price" in cars.columns else "Price"
-            year_col = "year" if "year" in cars.columns else ("Year" if "Year" in cars.columns else None)
-
-            if year_col and year_col in cars.columns:
-                similar_cars = cars[
-                    (cars["Price_Tier"] == predicted_tier) &
-                    (cars[year_col].between(year - 2, year + 2))
-                ]
-            else:
-                similar_cars = pd.DataFrame()
-
-            if len(similar_cars) >= 3:
-                base_price = float(similar_cars[price_col].median())
-            else:
-                base_price = float(cars[cars["Price_Tier"] == predicted_tier][price_col].median())
+                # Exact ML Regression Price
+                price_knn = float(knn_reg.predict(input_scaled)[0])
+                price_lin = float(lin_reg.predict(input_scaled)[0])
+                base_price = (price_knn + price_lin) / 2.0
 
             stars, multiplier = CONDITION_MULTIPLIERS[condition_choice]
             final_price = base_price * multiplier
@@ -207,7 +213,7 @@ with tab1:
             
             m_col1, m_col2 = st.columns(2)
             with m_col1:
-                st.metric("Dynamic Base Valuation", f"${base_price:,.2f}")
+                st.metric("ML Predicted Base Value", f"${base_price:,.2f}")
             with m_col2:
                 st.metric("Condition Multiplier", f"{multiplier:.2f}x ({stars}★)")
             
@@ -220,14 +226,14 @@ with tab1:
             }).set_index("Market Tier")
             st.bar_chart(prob_df)
         else:
-            st.info("Fill in the vehicle specifications on the left and click **Predict Market Tier & Value** to see results.")
+            st.info("Fill in vehicle specifications on the left and click **Predict Market Tier & Value**.")
 
 # =============================================================================
 # TAB 2: MODEL EVALUATION & HEATMAP COMPARISON
 # =============================================================================
 with tab2:
     st.subheader("📊 Model Evaluation & Comparison Heatmap")
-    st.markdown("Compare baseline models against their respective Hybrid enhancements on test data.")
+    st.markdown("Compare baseline models against Hybrid enhancements on classification accuracy and price regression.")
 
     compare_pair = st.selectbox(
         "Select Model Architecture Pair to Compare:",
@@ -247,27 +253,41 @@ with tab2:
             le = models["svm_xgb_data"]["le"]
             class_names = list(le.classes_)
 
-            # Standalone
-            pred_base = models["svm_standalone"].predict(X_test_scaled)
-            
-            # Hybrid
-            p_svm = models["svm_xgb_data"]["svm"].predict_proba(X_test_scaled)
-            p_xgb = models["svm_xgb_data"]["xgb"].predict_proba(X_test_scaled)
+            # Standalone predictions
+            svm_base = models["svm_standalone"]
+            clf_base = svm_base["classifier"] if isinstance(svm_base, dict) else svm_base
+            reg_base = svm_base.get("regressor", None) if isinstance(svm_base, dict) else None
+
+            pred_base = clf_base.predict(X_test_scaled)
+            pred_base_price = reg_base.predict(X_test_scaled) if reg_base else None
+
+            # Hybrid predictions
+            p_svm = models["svm_xgb_data"]["svm_clf"].predict_proba(X_test_scaled)
+            p_xgb = models["svm_xgb_data"]["xgb_clf"].predict_proba(X_test_scaled)
             pred_hybrid = le.inverse_transform(np.argmax((p_svm + p_xgb) / 2.0, axis=1))
+
+            p_reg_svm = models["svm_xgb_data"]["svm_reg"].predict(X_test_scaled)
+            p_reg_xgb = models["svm_xgb_data"]["xgb_reg"].predict(X_test_scaled)
+            pred_hybrid_price = (p_reg_svm + p_reg_xgb) / 2.0
 
         elif compare_pair == "KNN vs. Hybrid (KNN + Logistic Regression)":
             base_name = "Standalone KNN"
             hybrid_name = "Hybrid (KNN + Logistic Reg)"
-            class_names = list(models["knn_standalone"].classes_)
+            knn_clf = models["knn_lr_data"]["knn_clf"]
+            class_names = list(knn_clf.classes_)
 
-            # Standalone
-            pred_base = models["knn_standalone"].predict(X_test_scaled)
+            # Standalone (KNN alone)
+            pred_base = knn_clf.predict(X_test_scaled)
+            pred_base_price = models["knn_lr_data"]["knn_reg"].predict(X_test_scaled)
 
-            # Hybrid
-            p_knn = models["knn_lr_data"]["knn"].predict_proba(X_test_scaled)
-            p_lr = models["knn_lr_data"]["lr"].predict_proba(X_test_scaled)
-            comb_proba = (p_knn + p_lr) / 2.0
-            pred_hybrid = np.array(class_names)[np.argmax(comb_proba, axis=1)]
+            # Hybrid (KNN + Logistic Regression)
+            p_knn = knn_clf.predict_proba(X_test_scaled)
+            p_lr = models["knn_lr_data"]["logreg_clf"].predict_proba(X_test_scaled)
+            pred_hybrid = np.array(class_names)[np.argmax((p_knn + p_lr) / 2.0, axis=1)]
+
+            p_reg_knn = models["knn_lr_data"]["knn_reg"].predict(X_test_scaled)
+            p_reg_lin = models["knn_lr_data"]["lin_reg"].predict(X_test_scaled)
+            pred_hybrid_price = (p_reg_knn + p_reg_lin) / 2.0
 
         else:  # ANN vs. Hybrid (ANN + Random Forest)
             base_name = "Standalone ANN"
@@ -276,25 +296,60 @@ with tab2:
             class_names = list(le.classes_)
 
             # Standalone
-            pred_base = models["ann_standalone"].predict(X_test_scaled)
+            ann_base = models["ann_standalone"]
+            clf_base = ann_base["classifier"] if isinstance(ann_base, dict) else ann_base
+            reg_base = ann_base.get("regressor", None) if isinstance(ann_base, dict) else None
+
+            pred_base = clf_base.predict(X_test_scaled)
+            pred_base_price = reg_base.predict(X_test_scaled) if reg_base else None
 
             # Hybrid
-            p_ann = models["ann_rf_data"]["ann"].predict_proba(X_test_scaled)
-            p_rf = models["ann_rf_data"]["rf"].predict_proba(X_test_scaled)
+            p_ann = models["ann_rf_data"]["ann_clf"].predict_proba(X_test_scaled)
+            p_rf = models["ann_rf_data"]["rf_clf"].predict_proba(X_test_scaled)
             pred_hybrid = le.inverse_transform(np.argmax((p_ann + p_rf) / 2.0, axis=1))
 
-        # --- Accuracy & Metrics ---
+            p_reg_ann = models["ann_rf_data"]["ann_reg"].predict(X_test_scaled)
+            p_reg_rf = models["ann_rf_data"]["rf_reg"].predict(X_test_scaled)
+            pred_hybrid_price = (p_reg_ann + p_reg_rf) / 2.0
+
+        # --- Classification Metrics ---
         acc_base = (pred_base == y_test).mean() * 100
         acc_hybrid = (pred_hybrid == y_test).mean() * 100
         gain = acc_hybrid - acc_base
 
+        st.markdown("#### 🎯 Classification Performance (Price Tier)")
         m1, m2, m3 = st.columns(3)
         with m1:
             st.metric(f"{base_name} Accuracy", f"{acc_base:.2f}%")
         with m2:
             st.metric(f"{hybrid_name} Accuracy", f"{acc_hybrid:.2f}%")
         with m3:
-            st.metric("Ensemble Performance Gain", f"{'+' if gain >= 0 else ''}{gain:.2f}%")
+            st.metric("Ensemble Accuracy Gain", f"{'+' if gain >= 0 else ''}{gain:.2f}%")
+
+        # --- Regression Metrics ---
+        if y_test_price is not None:
+            st.markdown("#### 💵 Regression Performance (Selling Price Value)")
+            r1, r2, r3, r4 = st.columns(4)
+            
+            mae_hybrid = mean_absolute_error(y_test_price, pred_hybrid_price)
+            r2_hybrid = r2_score(y_test_price, pred_hybrid_price)
+
+            if pred_base_price is not None:
+                mae_base = mean_absolute_error(y_test_price, pred_base_price)
+                r2_base = r2_score(y_test_price, pred_base_price)
+                with r1:
+                    st.metric(f"{base_name} MAE", f"${mae_base:,.2f}")
+                with r2:
+                    st.metric(f"{hybrid_name} MAE", f"${mae_hybrid:,.2f}", delta=f"-${mae_base - mae_hybrid:,.2f}" if mae_base > mae_hybrid else f"+${mae_hybrid - mae_base:,.2f}", delta_color="inverse")
+                with r3:
+                    st.metric(f"{base_name} R² Score", f"{r2_base:.4f}")
+                with r4:
+                    st.metric(f"{hybrid_name} R² Score", f"{r2_hybrid:.4f}", delta=f"{r2_hybrid - r2_base:+.4f}")
+            else:
+                with r1:
+                    st.metric(f"{hybrid_name} MAE", f"${mae_hybrid:,.2f}")
+                with r2:
+                    st.metric(f"{hybrid_name} R² Score", f"{r2_hybrid:.4f}")
 
         st.write("---")
 
