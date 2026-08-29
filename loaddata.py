@@ -10,7 +10,7 @@ cars = cars.dropna().drop_duplicates()
 # 2. EXTRACT BRAND NAME
 cars['brand'] = cars['name'].str.split(' ').str[0]
 
-# 3. CLEAN UP TEXT UNITS SAFELY
+# 3. CLEAN UP TEXT UNITS
 if 'mileage(km/ltr/kg)' in cars.columns:
     cars['mileage(km/ltr/kg)'] = cars['mileage(km/ltr/kg)'].astype(str).str.split(' ').str[0]
 
@@ -42,7 +42,7 @@ X_train, X_test, y_train_price, y_test_price = train_test_split(
     X, y_price, test_size=0.2, random_state=42
 )
 
-# 6. CREATE PRICE TIERS STRICTLY ON TRAINING BINS (No Data Leakage)
+# 6. CREATE PRICE TIERS STRICTLY ON TRAINING BINS 
 _, bin_edges = pd.qcut(y_train_price, q=3, retbins=True, labels=["Low", "Medium", "High"])
 bin_edges[0] = -np.inf  # Ensure min edge covers any lower test prices
 bin_edges[-1] = np.inf  # Ensure max edge covers any higher test prices

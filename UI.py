@@ -65,14 +65,11 @@ CONDITION_MULTIPLIERS = {
     "5 Stars (Excellent / Like New / +20%)": (5, 1.20)
 }
 
-# -----------------------------------------------------------------------------
-# 3. HEADER & SIDEBAR
-# -----------------------------------------------------------------------------
+
 st.title("🚗 Car Price Tier Prediction & Valuation System")
-st.markdown("Automated market tier classification and ML continuous price regression across Architectures.")
 st.markdown("---")
 
-st.sidebar.header("⚙️ Active Hybrid Model")
+st.sidebar.header(" Active Hybrid Model")
 selected_architecture = st.sidebar.selectbox(
     "Choose Hybrid Model for Prediction:",
     [
@@ -82,11 +79,9 @@ selected_architecture = st.sidebar.selectbox(
     ]
 )
 
-tab1, tab2 = st.tabs(["🚀 Interactive Prediction", "📈 Model Evaluation & Comparison Heatmap"])
+tab1, tab2 = st.tabs(["🚀 Prediction", "📈 Model Evaluation & Comparison Heatmap"])
 
-# =============================================================================
 # TAB 1: INTERACTIVE PREDICTION
-# =============================================================================
 with tab1:
     col1, col2 = st.columns([1.2, 1], gap="large")
 
@@ -123,7 +118,7 @@ with tab1:
             value="3 Stars (Good / Fair / Standard Market)"
         )
 
-        predict_btn = st.button("🚀 Predict Market Tier & Value", type="primary", use_container_width=True)
+        predict_btn = st.button(" Predict Market Tier & Value", type="primary", use_container_width=True)
 
     with col2:
         st.subheader("📊 Prediction Results")
@@ -228,12 +223,9 @@ with tab1:
         else:
             st.info("Fill in vehicle specifications on the left and click **Predict Market Tier & Value**.")
 
-# =============================================================================
-# TAB 2: MODEL EVALUATION & HEATMAP COMPARISON
-# =============================================================================
+
 with tab2:
     st.subheader("📊 Model Evaluation & Comparison Heatmap")
-    st.markdown("Compare baseline models against Hybrid enhancements on classification accuracy and price regression.")
 
     compare_pair = st.selectbox(
         "Select Model Architecture Pair to Compare:",
@@ -317,7 +309,7 @@ with tab2:
         acc_hybrid = (pred_hybrid == y_test).mean() * 100
         gain = acc_hybrid - acc_base
 
-        st.markdown("#### 🎯 Classification Performance (Price Tier)")
+        st.markdown("#### Classification Performance (Price Tier)")
         m1, m2, m3 = st.columns(3)
         with m1:
             st.metric(f"{base_name} Accuracy", f"{acc_base:.2f}%")
@@ -328,7 +320,7 @@ with tab2:
 
         # --- Regression Metrics ---
         if y_test_price is not None:
-            st.markdown("#### 💵 Regression Performance (Selling Price Value)")
+            st.markdown("####  Regression Performance (Selling Price Value)")
             r1, r2, r3, r4 = st.columns(4)
             
             mae_hybrid = mean_absolute_error(y_test_price, pred_hybrid_price)
@@ -361,7 +353,7 @@ with tab2:
         st.write("---")
 
         # --- Accuracy Breakdown Heatmap ---
-        st.markdown(f"#### 📈 Tier-by-Tier Comparison: {base_name} vs. {hybrid_name}")
+        st.markdown(f"####  Tier-by-Tier Comparison: {base_name} vs. {hybrid_name}")
         report_base = classification_report(y_test, pred_base, output_dict=True, zero_division=0)
         report_hybrid = classification_report(y_test, pred_hybrid, output_dict=True, zero_division=0)
 
@@ -395,7 +387,7 @@ with tab2:
         st.write("---")
 
         # --- Side-by-Side Confusion Matrix ---
-        st.markdown("#### 🔄 Side-by-Side Confusion Matrix")
+        st.markdown("#### Side-by-Side Confusion Matrix")
         fig_cm = plot_side_by_side_confusion_matrix(
             y_true=y_test,
             y_pred_base=pred_base,
