@@ -5,14 +5,10 @@ from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, r2_score
 import joblib
 
-# =========================================================================
-# 1. IMPORT PREPROCESSED DATA & SCALER
-# =========================================================================
+
 from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, y_train_price, y_test_price, scaler, cars, brand_means
 
-# =========================================================================
-# 2. TRAIN CLASSIFIERS & REGRESSORS
-# =========================================================================
+
 knn_clf = KNeighborsClassifier(n_neighbors=5, weights='distance')
 logreg_clf = LogisticRegression(max_iter=1000, random_state=42)
 
@@ -34,9 +30,7 @@ joblib.dump({
 }, "knn_linear_model.pkl")
 print("Saved trained models to 'knn_linear_model.pkl'.\n")
 
-# =========================================================================
-# 3. EVALUATE PERFORMANCE METRICS
-# =========================================================================
+
 def evaluate_clf(model, X, y_true, name):
     y_pred = model.predict(X)
     return {
@@ -50,7 +44,7 @@ def evaluate_clf(model, X, y_true, name):
 knn_results = evaluate_clf(knn_clf, X_test_scaled, y_test, "KNN Classifier")
 logreg_results = evaluate_clf(logreg_clf, X_test_scaled, y_test, "Logistic Reg")
 
-# Soft-voting ensemble for classification
+
 knn_classes = list(knn_clf.classes_)
 knn_proba = knn_clf.predict_proba(X_test_scaled)
 logreg_proba = logreg_clf.predict_proba(X_test_scaled)
@@ -62,7 +56,7 @@ ensemble_precision = precision_score(y_test, ensemble_pred, average='weighted', 
 ensemble_recall = recall_score(y_test, ensemble_pred, average='weighted')
 ensemble_f1 = f1_score(y_test, ensemble_pred, average='weighted')
 
-# Regression metrics
+
 knn_price_pred = knn_reg.predict(X_test_scaled)
 lin_price_pred = lin_reg.predict(X_test_scaled)
 ensemble_price_pred = (knn_price_pred + lin_price_pred) / 2.0
@@ -81,9 +75,7 @@ print(f"Price Regression Ensemble MAE : ${mean_absolute_error(y_test_price, ense
 print(f"Price Regression Ensemble R2  : {r2_score(y_test_price, ensemble_price_pred):.4f}")
 print("==========================================================================\n")
 
-# =========================================================================
-# 4. INTERACTIVE PRICE PREDICTION FOR USER INPUT
-# =========================================================================
+
 CONDITION_MULTIPLIERS = {
     1: 0.80, 2: 0.90, 3: 1.00, 4: 1.10, 5: 1.20
 }
@@ -148,7 +140,7 @@ def predict_user_car():
 
         input_scaled = scaler.transform(input_features)
 
-        # 1. Predict Tier Probabilities
+
         knn_proba_user = knn_clf.predict_proba(input_scaled)[0]
         logreg_proba_user = logreg_clf.predict_proba(input_scaled)[0]
         ensemble_proba_user = (knn_proba_user + logreg_proba_user) / 2
@@ -158,16 +150,15 @@ def predict_user_car():
         logreg_tier = class_labels[np.argmax(logreg_proba_user)]
         ensemble_tier = class_labels[np.argmax(ensemble_proba_user)]
 
-        # 2. Predict Price via Ensemble Regressors (KNN Regressor + Linear Regression)
         knn_user_price = float(knn_reg.predict(input_scaled)[0])
         lin_user_price = float(lin_reg.predict(input_scaled)[0])
         base_price = (knn_user_price + lin_user_price) / 2.0
 
-        # 3. Apply Multiplier
+
         multiplier = CONDITION_MULTIPLIERS.get(condition_stars, 1.0)
         final_recommended_price = base_price * multiplier
 
-        # --- DISPLAY PREDICTION SUMMARY ---
+
         print("\n----------------------------------------------------------")
         print("                 PREDICTION RESULTS                       ")
         print("----------------------------------------------------------")

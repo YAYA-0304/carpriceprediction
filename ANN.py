@@ -4,10 +4,9 @@ from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, r2_score
 import joblib
 
-# 1. IMPORT PREPROCESSED DATA & SCALER
 from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, y_train_price, y_test_price, scaler, cars, brand_means, X_train
 
-# 2. TRAIN ANN CLASSIFIER (Tier) & ANN REGRESSOR (Price)
+
 ann_classifier = MLPClassifier(
     hidden_layer_sizes=(64, 32),
     activation='relu',
@@ -28,7 +27,6 @@ ann_classifier.fit(X_train_scaled, y_train)
 ann_regressor.fit(X_train_scaled, y_train_price)
 print("Training Complete!\n")
 
-# 3. EVALUATION
 y_pred_tier = ann_classifier.predict(X_test_scaled)
 y_pred_price = ann_regressor.predict(X_test_scaled)
 
@@ -55,7 +53,7 @@ print("==========================================================\n")
 joblib.dump({"classifier": ann_classifier, "regressor": ann_regressor}, "ann_models.pkl")
 joblib.dump(scaler, "scaler.pkl")
 
-# Multipliers based on vehicle physical condition (1 to 5 Stars)
+
 CONDITION_MULTIPLIERS = {
     1: 0.80, 2: 0.90, 3: 1.00, 4: 1.10, 5: 1.20
 }
@@ -112,16 +110,16 @@ def predict_user_car():
         user_df = pd.DataFrame([input_data])[X_train.columns]
         input_scaled = scaler.transform(user_df)
 
-        # ML-BASED PREDICTIONS (CLASSIFIER + REGRESSOR)
+       
         probabilities = ann_classifier.predict_proba(input_scaled)[0]
         class_labels = ann_classifier.classes_
         predicted_tier = class_labels[np.argmax(probabilities)]
         
-        # Predicted continuous price from ML Regressor
+      
         raw_pred_price = float(ann_regressor.predict(input_scaled)[0])
         final_recommended_price = raw_pred_price * multiplier
 
-        # DISPLAY RESULTS (SAME TERMINAL FORMAT)
+       
         print("\n----------------------------------------------------------")
         print("                 PREDICTION RESULTS                       ")
         print("----------------------------------------------------------")

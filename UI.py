@@ -6,30 +6,28 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import classification_report, mean_absolute_error, r2_score
 
-# 1. IMPORT DATASET & GRAPH UTILITIES
+
 from loaddata import X_test_scaled, y_test, y_test_price, brand_means
 from plot_graph import plot_side_by_side_confusion_matrix
 
-# 2. PAGE CONFIGURATION
+
 st.set_page_config(
     page_title="Car Price & Market Tier Prediction System",
     page_icon="🚗",
     layout="wide"
 )
 
-# -----------------------------------------------------------------------------
-# 1. LOAD ALL TRAINED MODEL ARTIFACTS
-# -----------------------------------------------------------------------------
+
 @st.cache_resource
 def load_all_models():
     scaler_obj = joblib.load("scaler.pkl")
     
-    # Standalone models (contain both classifier and regressor)
+   
     svm_standalone = joblib.load("svm_model.pkl")
     knn_standalone = joblib.load("knn_model.pkl") if pd.io.common.file_exists("knn_model.pkl") else None
     ann_standalone = joblib.load("ann_models.pkl") if pd.io.common.file_exists("ann_models.pkl") else joblib.load("ann_model.pkl")
     
-    # Hybrid models
+   
     svm_xgb_data = joblib.load("svm_xgb_model.pkl")
     ann_rf_data = joblib.load("ann_rf_model.pkl")
     knn_lr_data = joblib.load("knn_linear_model.pkl")
@@ -54,9 +52,7 @@ except Exception as e:
     )
     st.stop()
 
-# -----------------------------------------------------------------------------
-# 2. PRICING CONSTANTS
-# -----------------------------------------------------------------------------
+
 CONDITION_MULTIPLIERS = {
     "1 Star (Poor / -20%)": (1, 0.80),
     "2 Stars (Below Average / -10%)": (2, 0.90),
@@ -125,7 +121,7 @@ with tab1:
         st.markdown(f"**Active Hybrid Model:** `{selected_architecture}`")
         
         if predict_btn:
-            # One-Hot Binary Flags
+            
             fuel_Diesel = 1 if fuel_type == "Diesel" else 0
             fuel_Petrol = 1 if fuel_type == "Petrol" else 0
             fuel_LPG = 1 if fuel_type == "LPG" else 0
@@ -144,7 +140,7 @@ with tab1:
 
             input_scaled = scaler.transform(input_features)
 
-            # Prediction via Selected Hybrid Architecture
+            
             if selected_architecture == "Hybrid Ensemble (SVM + XGBoost)":
                 svm_clf = models["svm_xgb_data"]["svm_clf"]
                 xgb_clf = models["svm_xgb_data"]["xgb_clf"]
@@ -152,14 +148,14 @@ with tab1:
                 xgb_reg = models["svm_xgb_data"]["xgb_reg"]
                 le = models["svm_xgb_data"]["le"]
                 
-                # Tier
+                
                 p_svm = svm_clf.predict_proba(input_scaled)[0]
                 p_xgb = xgb_clf.predict_proba(input_scaled)[0]
                 probabilities = (p_svm + p_xgb) / 2.0
                 class_labels = list(le.classes_)
                 predicted_tier = le.inverse_transform([np.argmax(probabilities)])[0]
 
-                # Exact ML Regression Price
+                
                 price_svm = float(svm_reg.predict(input_scaled)[0])
                 price_xgb = float(xgb_reg.predict(input_scaled)[0])
                 base_price = (price_svm + price_xgb) / 2.0
@@ -171,14 +167,14 @@ with tab1:
                 rf_reg = models["ann_rf_data"]["rf_reg"]
                 le = models["ann_rf_data"]["le"]
                 
-                # Tier
+                
                 p_ann = ann_clf.predict_proba(input_scaled)[0]
                 p_rf = rf_clf.predict_proba(input_scaled)[0]
                 probabilities = (p_ann + p_rf) / 2.0
                 class_labels = list(le.classes_)
                 predicted_tier = le.inverse_transform([np.argmax(probabilities)])[0]
 
-                # Exact ML Regression Price
+                
                 price_ann = float(ann_reg.predict(input_scaled)[0])
                 price_rf = float(rf_reg.predict(input_scaled)[0])
                 base_price = (price_ann + price_rf) / 2.0
@@ -189,14 +185,14 @@ with tab1:
                 knn_reg = models["knn_lr_data"]["knn_reg"]
                 lin_reg = models["knn_lr_data"]["lin_reg"]
                 
-                # Tier
+                
                 p_knn = knn_clf.predict_proba(input_scaled)[0]
                 p_lr = logreg_clf.predict_proba(input_scaled)[0]
                 probabilities = (p_knn + p_lr) / 2.0
                 class_labels = list(knn_clf.classes_)
                 predicted_tier = class_labels[np.argmax(probabilities)]
 
-                # Exact ML Regression Price
+                
                 price_knn = float(knn_reg.predict(input_scaled)[0])
                 price_lin = float(lin_reg.predict(input_scaled)[0])
                 base_price = (price_knn + price_lin) / 2.0
@@ -304,7 +300,7 @@ with tab2:
             p_reg_rf = models["ann_rf_data"]["rf_reg"].predict(X_test_scaled)
             pred_hybrid_price = (p_reg_ann + p_reg_rf) / 2.0
 
-        # --- Classification Metrics ---
+        #  Classification Metrics 
         acc_base = (pred_base == y_test).mean() * 100
         acc_hybrid = (pred_hybrid == y_test).mean() * 100
         gain = acc_hybrid - acc_base
@@ -318,7 +314,7 @@ with tab2:
         with m3:
             st.metric("Ensemble Accuracy Gain", f"{acc_hybrid:.2f}%", delta=f"{gain:+.2f}%")
 
-        # --- Regression Metrics ---
+        # Regression Metrics 
         if y_test_price is not None:
             st.markdown("####  Regression Performance (Selling Price Value)")
             r1, r2, r3, r4 = st.columns(4)
@@ -330,7 +326,7 @@ with tab2:
                 mae_base = mean_absolute_error(y_test_price, pred_base_price)
                 r2_base = r2_score(y_test_price, pred_base_price)
                 
-                # Raw differences: (Hybrid - Base)
+                # (Hybrid - Base)
                 mae_diff = mae_hybrid - mae_base
                 r2_diff = r2_hybrid - r2_base
                 
@@ -352,7 +348,7 @@ with tab2:
 
         st.write("---")
 
-        # --- Accuracy Breakdown Heatmap ---
+        # Heatmap 
         st.markdown(f"####  Tier-by-Tier Comparison: {base_name} vs. {hybrid_name}")
         report_base = classification_report(y_test, pred_base, output_dict=True, zero_division=0)
         report_hybrid = classification_report(y_test, pred_hybrid, output_dict=True, zero_division=0)
@@ -386,7 +382,7 @@ with tab2:
 
         st.write("---")
 
-        # --- Side-by-Side Confusion Matrix ---
+       
         st.markdown("#### Side-by-Side Confusion Matrix")
         fig_cm = plot_side_by_side_confusion_matrix(
             y_true=y_test,

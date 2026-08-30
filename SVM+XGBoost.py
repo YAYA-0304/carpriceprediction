@@ -6,15 +6,14 @@ from xgboost import XGBClassifier, XGBRegressor
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, r2_score
 
-# 1. IMPORT PREPROCESSED DATA & SCALER
+
 from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, y_train_price, y_test_price, scaler, cars, brand_means
 
-# 2. ENCODE LABELS
+
 le = LabelEncoder()
 y_train_enc = le.fit_transform(y_train)
 y_test_enc = le.transform(y_test)
 
-# 3. TRAIN ENSEMBLE CLASSIFIERS & REGRESSORS
 svm_clf = SVC(kernel='rbf', C=1.0, probability=True, decision_function_shape='ovo', random_state=42)
 xgb_clf = XGBClassifier(n_estimators=100, learning_rate=0.1, random_state=42, eval_metric='mlogloss')
 
@@ -28,14 +27,13 @@ svm_reg.fit(X_train_scaled, y_train_price)
 xgb_reg.fit(X_train_scaled, y_train_price)
 print("Training Complete!\n")
 
-# 4. EVALUATION
-# Classification (Soft Voting)
+
 svm_probs = svm_clf.predict_proba(X_test_scaled)
 xgb_probs = xgb_clf.predict_proba(X_test_scaled)
 ensemble_probs = (svm_probs + xgb_probs) / 2.0
 y_pred_enc = np.argmax(ensemble_probs, axis=1)
 
-# Regression (Average price predictions)
+
 svm_price_preds = svm_reg.predict(X_test_scaled)
 xgb_price_preds = xgb_reg.predict(X_test_scaled)
 ensemble_price_preds = (svm_price_preds + xgb_price_preds) / 2.0
@@ -53,7 +51,7 @@ print(f"Price MAE      : ${mean_absolute_error(y_test_price, ensemble_price_pred
 print(f"Price R2-Score : {r2_score(y_test_price, ensemble_price_preds):.4f}")
 print("==========================================================\n")
 
-# Save combined model bundle
+
 joblib.dump({
     "svm_clf": svm_clf, "xgb_clf": xgb_clf,
     "svm_reg": svm_reg, "xgb_reg": xgb_reg,
@@ -61,7 +59,6 @@ joblib.dump({
 }, "svm_xgb_model.pkl")
 joblib.dump(scaler, "scaler.pkl")
 
-# 5. USER INTERACTIVE PREDICTION
 CONDITION_MULTIPLIERS = {1: 0.80, 2: 0.90, 3: 1.00, 4: 1.10, 5: 1.20}
 
 def predict_user_car():
@@ -114,14 +111,14 @@ def predict_user_car():
         
         input_scaled = scaler.transform(input_features)
         
-        # 1. Predict Tier
+      
         p_svm = svm_clf.predict_proba(input_scaled)[0]
         p_xgb = xgb_clf.predict_proba(input_scaled)[0]
         combined_probs = (p_svm + p_xgb) / 2.0
         predicted_idx = np.argmax(combined_probs)
         predicted_tier = le.inverse_transform([predicted_idx])[0]
         
-        # 2. Predict Base Price via Ensemble Regressors
+     
         price_svm = float(svm_reg.predict(input_scaled)[0])
         price_xgb = float(xgb_reg.predict(input_scaled)[0])
         base_price = (price_svm + price_xgb) / 2.0
@@ -129,7 +126,7 @@ def predict_user_car():
         multiplier = CONDITION_MULTIPLIERS.get(condition_stars, 1.0)
         final_recommended_price = base_price * multiplier
         
-        # 3. Output
+      
         print("\n----------------------------------------------------------")
         print("                 PREDICTION RESULTS                       ")
         print("----------------------------------------------------------")

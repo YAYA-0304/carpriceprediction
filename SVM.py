@@ -4,10 +4,10 @@ from sklearn.svm import SVC, SVR
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, r2_score
 import joblib
 
-# 1. IMPORT PREPROCESSED DATA & SCALER
+
 from loaddata import X_train_scaled, X_test_scaled, y_train, y_test, y_train_price, y_test_price, scaler, cars, brand_means
 
-# 2. TRAIN THE SVM CLASSIFIER (Tier) & SVR (Price)
+
 svm_classifier = SVC(kernel='rbf', C=1.0, probability=True, decision_function_shape='ovo', random_state=42)
 svm_regressor = SVR(kernel='rbf', C=1000.0, epsilon=0.1)
 
@@ -16,7 +16,7 @@ svm_classifier.fit(X_train_scaled, y_train)
 svm_regressor.fit(X_train_scaled, y_train_price)
 print("Training Complete!\n")
 
-# 3. EVALUATE PERFORMANCE METRICS
+
 y_pred_tier = svm_classifier.predict(X_test_scaled)
 y_pred_price = svm_regressor.predict(X_test_scaled)
 
@@ -42,13 +42,13 @@ joblib.dump({"classifier": svm_classifier, "regressor": svm_regressor}, "svm_mod
 joblib.dump(scaler, "scaler.pkl")
 print("Saved trained SVM models to 'svm_model.pkl' and scaler to 'scaler.pkl'.\n")
 
-# Multipliers based on vehicle physical condition (1 to 5 Stars)
+
 CONDITION_MULTIPLIERS = {
-    1: 0.80,  # Poor (-20%)
-    2: 0.90,  # Below Average (-10%)
-    3: 1.00,  # Good / Fair (Standard Market Value)
-    4: 1.10,  # Very Good (+10%)
-    5: 1.20   # Excellent / Like New (+20%)
+    1: 0.80,  
+    2: 0.90,  
+    3: 1.00,  
+    4: 1.10,  
+    5: 1.20   
 }
 
 def predict_user_car():
@@ -57,7 +57,7 @@ def predict_user_car():
     print("==========================================================")
     
     try:
-        # --- NUMERIC INPUTS ---
+
         year = float(input("Enter Year (e.g., 2017): "))
         km_driven = float(input("Enter Kilometers Driven (e.g., 45000): "))
         mileage = float(input("Enter Mileage in km/l (e.g., 21.5): "))
@@ -65,7 +65,7 @@ def predict_user_car():
         max_power = float(input("Enter Max Power in bhp (e.g., 85.0): "))
         seats = float(input("Enter Number of Seats (e.g., 5): "))
         
-        # --- MENU CHOICE: FUEL TYPE ---
+
         print("\nSelect Fuel Type:")
         print("  [1] Diesel")
         print("  [2] Petrol")
@@ -73,20 +73,20 @@ def predict_user_car():
         print("  [4] CNG / Other")
         fuel_choice = input("Enter choice (1-4): ").strip()
         
-        # --- MENU CHOICE: TRANSMISSION ---
+
         print("\nSelect Transmission Type:")
         print("  [1] Manual")
         print("  [2] Automatic")
         trans_choice = input("Enter choice (1-2): ").strip()
         
-        # --- MENU CHOICE: SELLER TYPE ---
+   
         print("\nSelect Seller Type:")
         print("  [1] Individual")
         print("  [2] Dealer")
         print("  [3] Trustmark Dealer")
         seller_choice = input("Enter choice (1-3): ").strip()
         
-        # --- MENU CHOICE: CONDITION RATING ---
+
         print("\nSelect Physical Condition Rating:")
         print("  1 Star  : Poor (-20%)")
         print("  2 Stars : Below Average (-10%)")
@@ -95,7 +95,7 @@ def predict_user_car():
         print("  5 Stars : Excellent / Like New (+20%)")
         condition_stars = int(input("Enter Rating (1-5): "))
 
-        # --- CONVERT MENU SELECTIONS TO BINARY FLAGS ---
+  
         fuel_Diesel = 1 if fuel_choice == "1" else 0
         fuel_Petrol = 1 if fuel_choice == "2" else 0
         fuel_LPG    = 1 if fuel_choice == "3" else 0
@@ -121,7 +121,7 @@ def predict_user_car():
             brand_encoded = brand_means.mean()
             print(f"-> Unrecognized brand '{brand_input}'. Assigning average weight: {brand_encoded:.2f}")
         
-        # --- ASSEMBLE FEATURE ARRAY ---
+     
         input_features = np.array([[
             year, km_driven, mileage, engine, max_power, seats,
             fuel_Diesel, fuel_LPG, fuel_Petrol,
@@ -129,22 +129,21 @@ def predict_user_car():
             brand_encoded
         ]])
         
-        # --- SCALE FEATURES & PREDICT ---
+
         input_scaled = scaler.transform(input_features)
 
-        # 1. Predict Tier (Classification)
+      
         probabilities = svm_classifier.predict_proba(input_scaled)[0]
         class_labels = svm_classifier.classes_
         predicted_tier = class_labels[np.argmax(probabilities)]
         
-        # 2. Predict Base Price (SVR Regression)
+      
         base_price = float(svm_regressor.predict(input_scaled)[0])
 
-        # 3. Apply Condition Multiplier
+        
         multiplier = CONDITION_MULTIPLIERS.get(condition_stars, 1.0)
         final_recommended_price = base_price * multiplier
-        
-        # --- DISPLAY PREDICTION RESULTS ---
+       
         print("\n----------------------------------------------------------")
         print("                 PREDICTION RESULTS                       ")
         print("----------------------------------------------------------")
